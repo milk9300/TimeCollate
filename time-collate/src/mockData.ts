@@ -3,6 +3,7 @@ import type { Book } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 export const initialBook: Book = {
+  id: uuidv4(),
   title: "我们的2023",
   author: "时光记录者",
   createdArt: Date.now(),
