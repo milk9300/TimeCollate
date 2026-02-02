@@ -1,0 +1,110 @@
+# =========================
+# Agent-Skills
+# =========================
+.agent
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# =========================
+# Environment & Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Node.js
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+.out/
+.next/
+.cache/
+
+# =========================
+# Vite / React
+# =========================
+.vite/
+.eslintcache
+
+# =========================
+# Go
+# =========================
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test & coverage
+*.test
+*.out
+coverage/
+coverage.out
+
+# =========================
+# Python (如果后续接入)
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.env/
+.envrc
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# PDF / Media Output
+# =========================
+*.pdf
+output/
+exports/
+tmp/
+temp/
+
+# =========================
+# Uploads / OSS cache
+# =========================
+uploads/
+storage/
+oss-cache/
+
+# =========================
+# Database
+# =========================
+*.sqlite
+*.db
+
+# =========================
+# Test Artifacts
+# =========================
+playwright-report/
+test-results/
+screenshots/
+
+# =========================
+# Docker
+# =========================
+docker-data/
