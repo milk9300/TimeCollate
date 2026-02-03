@@ -46,8 +46,8 @@ function SortableItem({ id, title, isActive, onSelect, onDelete }: SortableItemP
             ref={setNodeRef}
             style={style}
             className={`group flex items-center gap-3 p-3 mb-2 rounded-xl transition-all duration-300 cursor-pointer ${isActive
-                    ? 'bg-primary text-white shadow-premium ring-1 ring-white/10'
-                    : 'bg-white/50 hover:bg-white text-secondary hover:shadow-md'
+                ? 'bg-primary text-white shadow-premium ring-1 ring-white/10'
+                : 'bg-white/50 hover:bg-white text-secondary hover:shadow-md'
                 }`}
             onClick={onSelect}
         >
@@ -59,7 +59,7 @@ function SortableItem({ id, title, isActive, onSelect, onDelete }: SortableItemP
                 <GripVertical size={18} />
             </div>
 
-            <span className="flex-1 font-medium truncate">{title || 'Untitled Chapter'}</span>
+            <span className="flex-1 font-medium truncate">{title || '未命名章节'}</span>
 
             <button
                 onClick={(e) => {
@@ -91,7 +91,7 @@ export const ChapterList: React.FC<ChapterListProps> = ({ activeChapterId, onSel
         })
     );
 
-    if (!currentBook) return <div className="p-4 text-gray-500 animate-pulse">Loading collection...</div>;
+    if (!currentBook) return <div className="p-4 text-gray-500 animate-pulse">正在加载作品集...</div>;
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -111,7 +111,7 @@ export const ChapterList: React.FC<ChapterListProps> = ({ activeChapterId, onSel
     };
 
     return (
-        <div className="flex flex-col h-full glass-premium border-r border-gray-100 w-80 shadow-premium z-10">
+        <div className="flex flex-col h-full glass-premium border-r border-gray-100 w-56 shadow-premium z-10">
             <div className="p-8 border-b border-gray-50 bg-white/40 backdrop-blur-sm">
                 <h2 className="text-2xl font-bold text-primary tracking-tight">{currentBook.title}</h2>
                 <p className="text-xs font-semibold uppercase tracking-widest text-cta mt-1 opacity-80">{currentBook.author}</p>
@@ -149,7 +149,7 @@ export const ChapterList: React.FC<ChapterListProps> = ({ activeChapterId, onSel
                 >
                     <div className="absolute inset-0 luxury-gold-gradient opacity-0 group-hover:opacity-10 transition-opacity"></div>
                     <PlusCircle size={20} className="text-cta" />
-                    <span>{isCreating ? 'Creating...' : 'New Chapter'}</span>
+                    <span>{isCreating ? '创建中...' : '新建章节'}</span>
                 </button>
             </div>
         </div>

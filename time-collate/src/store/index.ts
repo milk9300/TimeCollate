@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Book, Chapter } from '../types';
+import type { Book, Chapter, Page } from '../types';
 import type { IBookService } from '../services/IBookService';
 import { LocalBookService } from '../services/LocalBookService';
 
@@ -12,14 +12,24 @@ interface BookState {
     isLoading: boolean;
     error: string | null;
 
-    // Actions
+    // Book Actions
     loadBook: (id: string) => Promise<void>;
     createBook: (title: string, author: string) => Promise<void>;
-    updateChapter: (chapterId: string, updates: Partial<Chapter>) => Promise<void>;
+    updateBookSettings: (updates: Partial<Book>) => Promise<void>;
+
+    // Chapter Actions
     addChapter: (title: string) => Promise<void>;
+    updateChapter: (chapterId: string, updates: Partial<Chapter>) => Promise<void>;
     deleteChapter: (chapterId: string) => Promise<void>;
     reorderChapters: (newChapters: Chapter[]) => Promise<void>;
-    uploadPhotoToChapter: (chapterId: string, file: File) => Promise<void>;
+
+    // Page Actions (新增)
+    addPageToChapter: (chapterId: string) => Promise<string>;  // 返回新页面ID
+    updatePage: (chapterId: string, pageId: string, updates: Partial<Page>) => Promise<void>;
+    deletePage: (chapterId: string, pageId: string) => Promise<void>;
+    uploadPhotoToPage: (chapterId: string, pageId: string, file: File) => Promise<void>;
+    deletePhotoFromPage: (chapterId: string, pageId: string, photoId: string) => Promise<void>;
+    reorderPhotosInPage: (chapterId: string, pageId: string, newPhotoIds: string[]) => Promise<void>;
 }
 
 export const useBookStore = create<BookState>((set, get) => ({
@@ -33,7 +43,7 @@ export const useBookStore = create<BookState>((set, get) => ({
             const book = await bookService.getBook(id);
             set({ currentBook: book, isLoading: false });
         } catch (e) {
-            set({ isLoading: false, error: 'Failed to load book' });
+            set({ isLoading: false, error: '加载作品失败' });
             console.error(e);
         }
     },
@@ -45,16 +55,54 @@ export const useBookStore = create<BookState>((set, get) => ({
                 id: crypto.randomUUID(),
                 title,
                 author,
-                createdArt: Date.now(),
+                createdAt: Date.now(),
                 chapters: [],
-                theme: 'classic'
+                theme: 'classic',
+                pageSize: 'A4'
             };
             await bookService.saveBook(newBook);
             set({ currentBook: newBook, isLoading: false });
         } catch (e) {
-            set({ isLoading: false, error: 'Failed to create book' });
+            set({ isLoading: false, error: '创建作品失败' });
             console.error(e);
         }
+    },
+
+    updateBookSettings: async (updates: Partial<Book>) => {
+        const { currentBook } = get();
+        if (!currentBook) return;
+
+        const updatedBook = { ...currentBook, ...updates };
+        set({ currentBook: updatedBook });
+        await bookService.saveBook(updatedBook);
+    },
+
+    addChapter: async (title: string) => {
+        const { currentBook } = get();
+        if (!currentBook) return;
+
+        // 创建章节时自动创建第一个页面
+        const firstPage: Page = {
+            id: crypto.randomUUID(),
+            content: '',
+            photos: [],
+            layout: 'single'
+        };
+
+        const newChapter: Chapter = {
+            id: crypto.randomUUID(),
+            title,
+            date: new Date().toISOString().split('T')[0],
+            pages: [firstPage]
+        };
+
+        const updatedBook = {
+            ...currentBook,
+            chapters: [...currentBook.chapters, newChapter]
+        };
+
+        set({ currentBook: updatedBook });
+        await bookService.saveBook(updatedBook);
     },
 
     updateChapter: async (chapterId: string, updates: Partial<Chapter>) => {
@@ -66,39 +114,13 @@ export const useBookStore = create<BookState>((set, get) => ({
         );
 
         const updatedBook = { ...currentBook, chapters: updatedChapters };
-
-        // Optimistic update
         set({ currentBook: updatedBook });
 
-        // Sync to service
         try {
             await bookService.saveBook(updatedBook);
         } catch (e) {
-            // Revert on failure (omitted for brevity in MVP, but good practice)
             console.error('Failed to save chapter update', e);
         }
-    },
-
-    addChapter: async (title: string) => {
-        const { currentBook } = get();
-        if (!currentBook) return;
-
-        const newChapter: Chapter = {
-            id: crypto.randomUUID(),
-            title,
-            content: '',
-            date: new Date().toISOString().split('T')[0],
-            photos: [],
-            layout: 'single'
-        };
-
-        const updatedBook = {
-            ...currentBook,
-            chapters: [...currentBook.chapters, newChapter]
-        };
-
-        set({ currentBook: updatedBook });
-        await bookService.saveBook(updatedBook);
     },
 
     deleteChapter: async (chapterId: string) => {
@@ -123,7 +145,76 @@ export const useBookStore = create<BookState>((set, get) => ({
         await bookService.saveBook(updatedBook);
     },
 
-    uploadPhotoToChapter: async (chapterId: string, file: File) => {
+    // ============ Page Actions ============
+
+    addPageToChapter: async (chapterId: string) => {
+        const { currentBook } = get();
+        if (!currentBook) return '';
+
+        const newPage: Page = {
+            id: crypto.randomUUID(),
+            content: '',
+            photos: [],
+            layout: 'single'
+        };
+
+        const updatedChapters = currentBook.chapters.map(c => {
+            if (c.id === chapterId) {
+                return { ...c, pages: [...c.pages, newPage] };
+            }
+            return c;
+        });
+
+        const updatedBook = { ...currentBook, chapters: updatedChapters };
+        set({ currentBook: updatedBook });
+        await bookService.saveBook(updatedBook);
+
+        return newPage.id;
+    },
+
+    updatePage: async (chapterId: string, pageId: string, updates: Partial<Page>) => {
+        const { currentBook } = get();
+        if (!currentBook) return;
+
+        const updatedChapters = currentBook.chapters.map(c => {
+            if (c.id === chapterId) {
+                const updatedPages = c.pages.map(p =>
+                    p.id === pageId ? { ...p, ...updates } : p
+                );
+                return { ...c, pages: updatedPages };
+            }
+            return c;
+        });
+
+        const updatedBook = { ...currentBook, chapters: updatedChapters };
+        set({ currentBook: updatedBook });
+
+        try {
+            await bookService.saveBook(updatedBook);
+        } catch (e) {
+            console.error('Failed to save page update', e);
+        }
+    },
+
+    deletePage: async (chapterId: string, pageId: string) => {
+        const { currentBook } = get();
+        if (!currentBook) return;
+
+        const updatedChapters = currentBook.chapters.map(c => {
+            if (c.id === chapterId) {
+                // 至少保留一页
+                if (c.pages.length <= 1) return c;
+                return { ...c, pages: c.pages.filter(p => p.id !== pageId) };
+            }
+            return c;
+        });
+
+        const updatedBook = { ...currentBook, chapters: updatedChapters };
+        set({ currentBook: updatedBook });
+        await bookService.saveBook(updatedBook);
+    },
+
+    uploadPhotoToPage: async (chapterId: string, pageId: string, file: File) => {
         const { currentBook } = get();
         if (!currentBook) return;
 
@@ -132,7 +223,13 @@ export const useBookStore = create<BookState>((set, get) => ({
 
             const updatedChapters = currentBook.chapters.map(c => {
                 if (c.id === chapterId) {
-                    return { ...c, photos: [...c.photos, photo] };
+                    const updatedPages = c.pages.map(p => {
+                        if (p.id === pageId) {
+                            return { ...p, photos: [...p.photos, photo] };
+                        }
+                        return p;
+                    });
+                    return { ...c, pages: updatedPages };
                 }
                 return c;
             });
@@ -143,5 +240,54 @@ export const useBookStore = create<BookState>((set, get) => ({
         } catch (e) {
             console.error('Failed to upload photo', e);
         }
+    },
+
+    deletePhotoFromPage: async (chapterId: string, pageId: string, photoId: string) => {
+        const { currentBook } = get();
+        if (!currentBook) return;
+
+        const updatedChapters = currentBook.chapters.map(c => {
+            if (c.id === chapterId) {
+                const updatedPages = c.pages.map(p => {
+                    if (p.id === pageId) {
+                        return { ...p, photos: p.photos.filter(photo => photo.id !== photoId) };
+                    }
+                    return p;
+                });
+                return { ...c, pages: updatedPages };
+            }
+            return c;
+        });
+
+        const updatedBook = { ...currentBook, chapters: updatedChapters };
+        set({ currentBook: updatedBook });
+        await bookService.saveBook(updatedBook);
+    },
+
+    reorderPhotosInPage: async (chapterId: string, pageId: string, newPhotoIds: string[]) => {
+        const { currentBook } = get();
+        if (!currentBook) return;
+
+        const updatedChapters = currentBook.chapters.map(c => {
+            if (c.id === chapterId) {
+                const updatedPages = c.pages.map(p => {
+                    if (p.id === pageId) {
+                        // 根据 newPhotoIds 顺序重排 photos 数组
+                        const photoMap = new Map(p.photos.map(photo => [photo.id, photo]));
+                        const reorderedPhotos = newPhotoIds
+                            .map(id => photoMap.get(id))
+                            .filter(Boolean) as typeof p.photos;
+                        return { ...p, photos: reorderedPhotos };
+                    }
+                    return p;
+                });
+                return { ...c, pages: updatedPages };
+            }
+            return c;
+        });
+
+        const updatedBook = { ...currentBook, chapters: updatedChapters };
+        set({ currentBook: updatedBook });
+        await bookService.saveBook(updatedBook);
     }
 }));

@@ -62,11 +62,12 @@ export class LocalBookService implements IBookService {
         await this.delay();
         // 本地模式：使用 URL.createObjectURL 模拟上传
         const url = URL.createObjectURL(file);
+        // 注意：不返回 file 属性，表示上传已完成
         return {
             id: crypto.randomUUID(),
             url,
             caption: '',
-            file, // 暂存 File 对象，虽然 LocalStorage 存不下，但在内存中有效
+            // file 属性不再返回，上传完成后不需要保留
         };
     }
 }
