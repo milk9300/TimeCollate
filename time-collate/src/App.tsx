@@ -1,198 +1,129 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import axios from 'axios';
+import { useAuthStore } from './store/useAuthStore';
 import './App.css';
-import { useBookStore } from './store';
-import { ChapterList } from './components/ChapterList';
-import { ChapterEditor } from './components/ChapterEditor';
-import { BookRenderer } from './rendering/BookRenderer';
-import { ThemeProvider } from './rendering/ThemeManager';
-import { Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react';
-import { PAGE_SIZES } from './rendering/PhysicalConstants';
 
-// 缩放常量
-const ZOOM_STEP = 0.1;
-const MIN_ZOOM = 0.2;
-const MAX_ZOOM = 1.5;
-const DEFAULT_ZOOM = 0.4;
+// 页面组件懒加载
+const Lobby = lazy(() => import('./features/book/pages/Lobby').then(m => ({ default: m.Lobby })));
+const Editor = lazy(() => import('./features/editor/pages/Editor').then(m => ({ default: m.Editor })));
+const Trash = lazy(() => import('./features/book/pages/Trash').then(m => ({ default: m.Trash })));
+const Preview = lazy(() => import('./features/editor/pages/Preview').then(m => ({ default: m.Preview })));
+const SharedBookViewer = lazy(() => import('./features/editor/pages/SharedBookViewer').then(m => ({ default: m.SharedBookViewer })));
+const Login = lazy(() => import('./features/auth/pages/Login').then(m => ({ default: m.Login })));
+const Register = lazy(() => import('./features/auth/pages/Register').then(m => ({ default: m.Register })));
+const Profile = lazy(() => import('./features/profile/pages/Profile').then(m => ({ default: m.Profile })));
+const Square = lazy(() => import('./features/book/pages/Square').then(m => ({ default: m.Square })));
+const Reader = lazy(() => import('./features/editor/pages/Reader').then(m => ({ default: m.Reader })));
+const Market = lazy(() => import('./features/book/pages/Market').then(m => ({ default: m.Market })));
 
-function App() {
-  const { currentBook, createBook, isLoading } = useBookStore();
-  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
-  const [activePageId, setActivePageId] = useState<string | null>(null);
-  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
-  const [previewScale, setPreviewScale] = useState(DEFAULT_ZOOM);
+// 管理员页面懒加载
+const AdminDashboard = lazy(() => import('./features/admin/pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const AdminUsers = lazy(() => import('./features/admin/pages/AdminUsers').then(m => ({ default: m.AdminUsers })));
+const AdminBooks = lazy(() => import('./features/admin/pages/AdminBooks').then(m => ({ default: m.AdminBooks })));
+const AdminFeedbacks = lazy(() => import('./features/admin/pages/AdminFeedbacks').then(m => ({ default: m.AdminFeedbacks })));
+const AdminBuilder = lazy(() => import('./features/admin/pages/AdminBuilder').then(m => ({ default: m.AdminBuilder })));
+const MyLayouts = lazy(() => import('./features/book/pages/MyLayouts').then(m => ({ default: m.MyLayouts })));
+const AdminRenderFlow = lazy(() => import('./features/admin/pages/AdminRenderFlow').then(m => ({ default: m.AdminRenderFlow })));
+const AdminStorage = lazy(() => import('./features/admin/pages/AdminStorage').then(m => ({ default: m.AdminStorage })));
+const AdminAnnouncement = lazy(() => import('./features/admin/pages/AdminAnnouncement').then(m => ({ default: m.AdminAnnouncement })));
+const AdminSecurity = lazy(() => import('./features/admin/pages/AdminSecurity').then(m => ({ default: m.AdminSecurity })));
+const AdminDanger = lazy(() => import('./features/admin/pages/AdminDanger').then(m => ({ default: m.AdminDanger })));
 
-  useEffect(() => {
-    const init = async () => {
-      await createBook('我的时光集', '时光记录者');
-    };
-    init();
-  }, [createBook]);
+import { AdminGuard } from './features/admin/components/AdminGuard';
 
-  // 当章节变化时，自动选择第一个页面
-  // 注意：只在 activeChapterId 变化时触发，不在 currentBook 变化时触发
-  useEffect(() => {
-    if (currentBook && activeChapterId) {
-      const chapter = currentBook.chapters.find(c => c.id === activeChapterId);
-      if (chapter && chapter.pages.length > 0) {
-        // 检查当前 activePageId 是否属于这个章节
-        const pageExistsInChapter = chapter.pages.some(p => p.id === activePageId);
-        if (!pageExistsInChapter) {
-          setActivePageId(chapter.pages[0].id);
-        }
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChapterId]);
+// 配置基础地址
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL;
 
-  // ESC键退出全屏预览
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreenPreview) {
-        setIsFullscreenPreview(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreenPreview]);
-
-  // 缩放控制
-  const handleZoomIn = useCallback(() => {
-    setPreviewScale(prev => Math.min(prev + ZOOM_STEP, MAX_ZOOM));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setPreviewScale(prev => Math.max(prev - ZOOM_STEP, MIN_ZOOM));
-  }, []);
-
-  const handleZoomReset = useCallback(() => {
-    setPreviewScale(DEFAULT_ZOOM);
-  }, []);
-
-  // 章节选择处理
-  const handleSelectChapter = useCallback((chapterId: string) => {
-    setActiveChapterId(chapterId);
-  }, []);
-
-  // 页面切换处理
-  const handlePageChange = useCallback((pageId: string) => {
-    setActivePageId(pageId);
-  }, []);
-
-  if (isLoading || !currentBook) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-xl text-gray-400 animate-pulse">正在进入拾光集...</div>
-      </div>
-    );
+// 全局 Axios 拦截器，自动注入 Token
+axios.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+  return config;
+});
 
-  // 获取当前活动章节和页面
-  const activeChapter = currentBook.chapters.find(c => c.id === activeChapterId) || currentBook.chapters[0];
-  const activePage = activeChapter?.pages.find(p => p.id === activePageId) || activeChapter?.pages[0];
+/**
+ * 路由守卫组件
+ */
+const AuthGuard = ({ children }: { children: React.ReactNode }) => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+};
+
+/**
+ * 应用路由容器
+ */
+function App() {
+  const { token, updateUser, logout } = useAuthStore();
+
+  // 应用启动时同步用户信息
+  useEffect(() => {
+    const isLocal = import.meta.env.VITE_STORAGE_MODE !== 'cloud';
+    if (isLocal) return;
+
+    if (token) {
+      const syncUser = async () => {
+        try {
+          const response = await axios.get('/auth/me');
+          if (response.data.success) {
+            updateUser(response.data.data);
+          }
+        } catch (error: any) {
+          console.error('Failed to sync user status:', error);
+          // 如果是 401 错误，说明 Token 无效，自动退出
+          if (error.response?.status === 401) {
+            logout();
+          }
+        }
+      };
+      syncUser();
+    }
+  }, [token]);
 
   return (
-    <ThemeProvider theme={currentBook.theme || 'classic'}>
-      <div className="flex h-screen w-full overflow-hidden bg-[#FBFBFB] text-gray-900">
-        {/* Navigation Sidebar */}
-        {!isFullscreenPreview && (
-          <ChapterList
-            activeChapterId={activeChapterId}
-            onSelectChapter={handleSelectChapter}
-          />
-        )}
+    <BrowserRouter>
+      <Suspense fallback={
+        <div className="h-screen w-screen flex items-center justify-center bg-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        </div>
+      }>
+        <Routes>
+          {/* 公开路由 */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/s/:slug" element={<SharedBookViewer />} />
 
-        {/* Main Content Area: Split View */}
-        <main className="flex-1 flex overflow-hidden">
-          {/* Left: Editor Panel */}
-          {!isFullscreenPreview && (
-            <div className="w-[400px] border-r border-gray-100 bg-white flex flex-col shadow-sm z-10">
-              <ChapterEditor
-                chapterId={activeChapterId}
-                activePageId={activePageId}
-                onPageChange={handlePageChange}
-              />
-            </div>
-          )}
+          {/* 私有路由（受保护） */}
+          <Route path="/" element={<AuthGuard><Lobby /></AuthGuard>} />
+          <Route path="/square" element={<AuthGuard><Square /></AuthGuard>} />
+          <Route path="/editor/:bookId" element={<AuthGuard><Editor /></AuthGuard>} />
+          <Route path="/book/:bookId/preview" element={<AuthGuard><Preview /></AuthGuard>} />
+          <Route path="/read/:bookId" element={<AuthGuard><Reader /></AuthGuard>} />
+          <Route path="/trash" element={<AuthGuard><Trash /></AuthGuard>} />
+          <Route path="/profile/:userId?" element={<AuthGuard><Profile /></AuthGuard>} />
+          <Route path="/market" element={<AuthGuard><Market /></AuthGuard>} />
+          <Route path="/my/layouts" element={<AuthGuard><MyLayouts /></AuthGuard>} />
+          <Route path="/builder" element={<AuthGuard><AdminBuilder /></AuthGuard>} />
 
-          {/* Right: Live Preview Panel */}
-          <div className={`flex-1 bg-[#E8E8E8] relative overflow-hidden flex flex-col transition-all duration-300 ${isFullscreenPreview ? 'absolute inset-0 z-50' : ''}`}>
-            {/* 顶部状态栏 */}
-            <div className="absolute top-6 left-6 z-20 bg-white/80 backdrop-blur shadow-sm px-4 py-2 rounded-full border border-white/50 flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">实时物理渲染引擎</span>
-            </div>
+          {/* 管理员路由 */}
+          <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+          <Route path="/admin/users" element={<AdminGuard><AdminUsers /></AdminGuard>} />
+          <Route path="/admin/books" element={<AdminGuard><AdminBooks /></AdminGuard>} />
+          <Route path="/admin/feedbacks" element={<AdminGuard><AdminFeedbacks /></AdminGuard>} />
+          <Route path="/admin/builder" element={<AdminGuard><AdminBuilder /></AdminGuard>} />
+          <Route path="/admin/render-flow" element={<AdminGuard><AdminRenderFlow /></AdminGuard>} />
+          <Route path="/admin/storage" element={<AdminGuard><AdminStorage /></AdminGuard>} />
+          <Route path="/admin/announcement" element={<AdminGuard><AdminAnnouncement /></AdminGuard>} />
+          <Route path="/admin/security" element={<AdminGuard><AdminSecurity /></AdminGuard>} />
+          <Route path="/admin/danger" element={<AdminGuard><AdminDanger /></AdminGuard>} />
 
-            {/* 右上角工具栏 */}
-            <div className="absolute top-6 right-6 z-20 flex items-center gap-2">
-              {/* 缩放控制 */}
-              <div className="bg-white/80 backdrop-blur shadow-sm rounded-full border border-white/50 flex items-center overflow-hidden">
-                <button
-                  onClick={handleZoomOut}
-                  className="p-2.5 hover:bg-gray-100 transition-colors border-r border-gray-200"
-                  title="缩小"
-                  disabled={previewScale <= MIN_ZOOM}
-                >
-                  <ZoomOut size={14} className="text-gray-500" />
-                </button>
-                <button
-                  onClick={handleZoomReset}
-                  className="px-3 py-2 hover:bg-gray-100 transition-colors text-[10px] font-bold text-gray-600 min-w-[50px]"
-                  title="重置缩放"
-                >
-                  {Math.round(previewScale * 100)}%
-                </button>
-                <button
-                  onClick={handleZoomIn}
-                  className="p-2.5 hover:bg-gray-100 transition-colors border-l border-gray-200"
-                  title="放大"
-                  disabled={previewScale >= MAX_ZOOM}
-                >
-                  <ZoomIn size={14} className="text-gray-500" />
-                </button>
-              </div>
-
-              {/* 全屏切换 */}
-              <button
-                onClick={() => setIsFullscreenPreview(!isFullscreenPreview)}
-                className="bg-white/80 backdrop-blur shadow-sm p-2.5 rounded-full border border-white/50 hover:bg-white transition-colors group"
-                title={isFullscreenPreview ? '退出全屏 (ESC)' : '全屏预览'}
-              >
-                {isFullscreenPreview ? (
-                  <Minimize2 size={14} className="text-gray-500 group-hover:text-gray-700" />
-                ) : (
-                  <Maximize2 size={14} className="text-gray-500 group-hover:text-gray-700" />
-                )}
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto">
-              {activePage && (
-                <BookRenderer
-                  page={activePage}
-                  pageSize={currentBook.pageSize}
-                  chapterTitle={activeChapter?.title}
-                  chapterDate={activeChapter?.date}
-                  chapterIndex={currentBook.chapters.findIndex(c => c.id === activeChapter?.id)}
-                  scale={previewScale}
-                />
-              )}
-            </div>
-
-            {/* 底部信息栏 */}
-            <div className="absolute bottom-6 right-6 z-20 bg-white/80 backdrop-blur shadow-sm px-4 py-2 rounded-full border border-white/50 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              印刷预览 • {currentBook.pageSize} ({PAGE_SIZES[currentBook.pageSize].width}x{PAGE_SIZES[currentBook.pageSize].height}mm)
-            </div>
-
-            {/* 全屏模式提示 */}
-            {isFullscreenPreview && (
-              <div className="absolute bottom-6 left-6 z-20 bg-black/60 backdrop-blur shadow-sm px-4 py-2 rounded-full text-[10px] font-medium text-white/80">
-                按 ESC 退出全屏预览
-              </div>
-            )}
-          </div>
-        </main>
-      </div>
-    </ThemeProvider>
+          {/* 默认重定向 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
   );
 }
 

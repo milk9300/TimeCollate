@@ -1,0 +1,10 @@
+{
+  "name": "fc-video-generator",
+  "version": "1.0.0",
+  "description": "Deterministic 3D book flip video generator for TimeCollate using Puppeteer and FFmpeg",
+  "main": "index.js",
+  "dependencies": {
+    "ali-oss": "^6.20.0",
+    "axios": "^1.6.8"
+  }
+}
