@@ -115,3 +115,9 @@ docker-data/
 server/dist/
 server/node_modules/
 server/.env
+
+# =========================
+# 开发文档
+# =========================
+/desc
+
