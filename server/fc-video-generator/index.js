@@ -53,18 +53,21 @@ exports.handler = async (event, context) => {
         callbackUrl,
         token,
         user,
+        exportType = 'video', // 'video' | 'pdf'
+        pageSize = 'A4',
         ossRegion = 'oss-cn-hangzhou',
         ossBucket = 'time-collate',
         ossPrefix = 'uploads/'
     } = eventObj;
 
-    console.log(`[FC Video Generator] Starting task ${taskId} for book ${bookId}`);
+    console.log(`[FC Video Generator] Starting task ${taskId} (type: ${exportType}) for book ${bookId}`);
     
     // 初始化进度 10%
     await reportProgress(callbackUrl, taskId, 10);
 
     const framesDir = path.join('/tmp', `frames_${taskId}`);
     const videoPath = path.join('/tmp', `video_${taskId}.mp4`);
+    const pdfPath = path.join('/tmp', `book_${taskId}.pdf`);
     let browser = null;
 
     try {
@@ -106,6 +109,188 @@ exports.handler = async (event, context) => {
         // 上报进度 20%
         await reportProgress(callbackUrl, taskId, 20);
 
+        // ==========================================
+        // 分支 A: PDF 导出逻辑
+        // ==========================================
+        if (exportType === 'pdf') {
+            const page = await browser.newPage();
+            // 设置 2x 设备像素比，保证 PDF 渲染出的图片是高保真的
+            await page.setViewport({ width: 1200, height: 900, deviceScaleFactor: 2 });
+
+            console.log(`[FC Video Generator] [PDF] Navigating to frontend root to inject auth: ${frontendUrl}`);
+            await page.goto(frontendUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+            
+            await page.evaluate((t, u) => {
+                const authState = {
+                    state: {
+                        token: t,
+                        user: u,
+                        isAuthenticated: true
+                    },
+                    version: 0
+                };
+                localStorage.setItem('timecollate-auth', JSON.stringify(authState));
+            }, token, user);
+
+            const targetUrl = `${frontendUrl}/book/${bookId}/preview?print=true`;
+            console.log(`[FC Video Generator] [PDF] Loading target book preview URL: ${targetUrl}`);
+            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+            // 进度 30%
+            await reportProgress(callbackUrl, taskId, 30);
+
+            // 等待前端 PDF 就绪信号
+            console.log(`[FC Video Generator] [PDF] Waiting for frontend signaled readiness...`);
+            let resolveReady;
+            const readyPromise = new Promise((resolve) => {
+                resolveReady = resolve;
+            });
+            await page.exposeFunction('onPdfReady', () => {
+                console.log('[FC Video Generator] [PDF] Frontend signaled readiness');
+                resolveReady();
+            });
+
+            try {
+                await Promise.race([
+                    readyPromise,
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Readiness signal timeout')), 30000)
+                    )
+                ]);
+            } catch (sigErr) {
+                console.warn('[FC Video Generator] [PDF] Signal warning:', sigErr.message);
+            }
+
+            // 再次确保所有图片加载完毕
+            await page.evaluate(() => {
+                return new Promise((resolve) => {
+                    const imgs = Array.from(document.querySelectorAll('img'));
+                    if (imgs.length === 0) return resolve();
+                    let done = 0;
+                    const check = () => { if (++done >= imgs.length) resolve(); };
+                    for (const img of imgs) {
+                        if (img.complete && img.naturalWidth > 0) check();
+                        else {
+                            img.addEventListener('load', check, { once: true });
+                            img.addEventListener('error', check, { once: true });
+                        }
+                    }
+                });
+            });
+
+            // 稳定等待，让布局彻底计算完毕
+            await new Promise(r => setTimeout(r, 1500));
+
+            // 获取全部页面元素
+            const pageHandles = await page.$$('[data-pdf-page]');
+            console.log(`[FC Video Generator] [PDF] Found ${pageHandles.length} page elements in DOM.`);
+            if (pageHandles.length === 0) {
+                throw new Error('No page elements found in the Preview DOM. Cannot generate PDF.');
+            }
+
+            // 进度 50%
+            await reportProgress(callbackUrl, taskId, 50);
+
+            // 初始化 pdf-lib 并设定物理页面大小尺寸 (A4, A5, 16K, B5)
+            const { PDFDocument } = require('pdf-lib');
+            const pdfDoc = await PDFDocument.create();
+            const MM_TO_PT = 2.834645669;
+            const PAGE_DIMENSIONS = {
+                'A4': { width: 210, height: 297 },
+                'A5': { width: 148, height: 210 },
+                '16K': { width: 184, height: 260 },
+                'B5': { width: 176, height: 250 },
+            };
+            const dimMm = PAGE_DIMENSIONS[pageSize] || PAGE_DIMENSIONS.A4;
+            const pdfWidthPt = dimMm.width * MM_TO_PT;
+            const pdfHeightPt = dimMm.height * MM_TO_PT;
+
+            // 逐页截图并合成 PDF
+            for (let i = 0; i < pageHandles.length; i++) {
+                console.log(`[FC Video Generator] [PDF] Capturing page ${i + 1}/${pageHandles.length}...`);
+                
+                // 滚动到该元素并等待稳定
+                await page.evaluate(el => el.scrollIntoView(), pageHandles[i]);
+                await new Promise(r => setTimeout(r, 300));
+
+                // 截图为 JPEG 格式 (78% 质量，通过 Chromium 内置压缩机制)
+                const jpegBuffer = await pageHandles[i].screenshot({
+                    type: 'jpeg',
+                    quality: 78
+                });
+
+                console.log(`[FC Video Generator] [PDF]   Page ${i + 1}: Captured JPEG (${(jpegBuffer.length / 1024).toFixed(0)}KB)`);
+
+                // 嵌入 PDF 并设定物理页面大小
+                const jpegImage = await pdfDoc.embedJpg(jpegBuffer);
+                const pdfPage = pdfDoc.addPage([pdfWidthPt, pdfHeightPt]);
+                pdfPage.drawImage(jpegImage, {
+                    x: 0,
+                    y: 0,
+                    width: pdfWidthPt,
+                    height: pdfHeightPt,
+                });
+
+                // 更新中间进度 (从 50% 增长到 85%)
+                const currentProgress = 50 + Math.min(Math.round(((i + 1) / pageHandles.length) * 35), 35);
+                await reportProgress(callbackUrl, taskId, currentProgress);
+            }
+
+            const pdfBytes = await pdfDoc.save();
+            console.log(`[FC Video Generator] [PDF] Final PDF generated, size: ${(pdfBytes.length / 1024).toFixed(0)}KB`);
+
+            // 写入临时文件
+            fs.writeFileSync(pdfPath, pdfBytes);
+
+            // 进度 90%
+            await reportProgress(callbackUrl, taskId, 90);
+            await browser.close();
+            browser = null;
+
+            // 初始化 OSS
+            const ossClient = new OSS({
+                region: ossRegion,
+                accessKeyId: context.credentials.accessKeyId,
+                accessKeySecret: context.credentials.accessKeySecret,
+                stsToken: context.credentials.securityToken,
+                bucket: ossBucket
+            });
+
+            const ossKey = `${ossPrefix}pdfs/${taskId}.pdf`;
+            console.log(`[FC Video Generator] [PDF] Uploading PDF to OSS: ${ossKey}`);
+            const uploadResult = await ossClient.put(ossKey, pdfPath);
+            let pdfUrl = uploadResult.url;
+            console.log(`[FC Video Generator] [PDF] PDF uploaded successfully: ${pdfUrl}`);
+
+            // 进度 95%
+            await reportProgress(callbackUrl, taskId, 95);
+
+            // 成功回调，通知主后端
+            await axios.post(callbackUrl, {
+                taskId,
+                success: true,
+                videoUrl: pdfUrl, // 依然以 videoUrl 属性名返回，主后端统一解析并存为 download_url
+                ossKey,
+                fileSize: pdfBytes.length
+            }, {
+                timeout: 10000
+            });
+
+            // 清除临时文件
+            try {
+                if (fs.existsSync(pdfPath)) {
+                    fs.unlinkSync(pdfPath);
+                }
+            } catch (cleanupErr) {
+                console.error('[FC Video Generator] [PDF] Cleanup failed:', cleanupErr.message);
+            }
+
+            return { success: true, pdfUrl };
+        }
+
+        // ==========================================
+        // 分支 B: 3D 视频录制导出逻辑 (原有逻辑)
+        // ==========================================
         const page = await browser.newPage();
         // 设置导出的标准 16:9 高清分辨率
         await page.setViewport({ width: 1280, height: 720 });
@@ -341,6 +526,9 @@ exports.handler = async (event, context) => {
             cleanDir(framesDir);
             if (fs.existsSync(videoPath)) {
                 fs.unlinkSync(videoPath);
+            }
+            if (fs.existsSync(pdfPath)) {
+                fs.unlinkSync(pdfPath);
             }
         } catch (cleanupErr) {
             console.error('[FC Video Generator] Cleanup failed:', cleanupErr.message);

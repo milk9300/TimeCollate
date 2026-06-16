@@ -21,7 +21,7 @@ router.post('/webhook/video', async (req, res) => {
             return;
         }
 
-        const { taskId, success, videoUrl, ossKey, errorMessage, progress } = req.body;
+        const { taskId, success, videoUrl, ossKey, errorMessage, progress, fileSize } = req.body;
         if (!taskId) {
             res.status(400).json({ success: false, error: 'Missing taskId in body' });
             return;
@@ -41,16 +41,19 @@ router.post('/webhook/video', async (req, res) => {
         console.log(`[FC Webhook] Received completion status for task ${taskId}: success=${success}`);
 
         if (success) {
-            const videoSize = 10 * 1024 * 1024; // 估算 3D 预览视频大小为 10MB
+            // 支持对不同导出格式进行合理的大小估算，并优先采用云端上报的真实体积
+            const defaultSize = 5 * 1024 * 1024;
+            const finalSize = fileSize || defaultSize;
+
             await pool.query(
                 `UPDATE export_tasks 
                  SET status = 'completed', progress = 100, download_url = ?, oss_key = ?, file_size = ? 
                  WHERE id = ?`,
-                [videoUrl, ossKey || null, videoSize, taskId]
+                [videoUrl, ossKey || null, finalSize, taskId]
             );
-            // 记录视频导出流量
+            // 记录导出流量
             const { trafficService } = await import('../services/TrafficService.js');
-            await trafficService.recordTraffic('export', videoSize);
+            await trafficService.recordTraffic('export', finalSize);
         } else {
             await pool.query(
                 `UPDATE export_tasks 
@@ -141,45 +144,31 @@ router.post('/:bookId', async (req, res) => {
 
         const user = await authService.getUserById(req.userId!);
 
-        if (type === 'pdf') {
-            // 将 PDF 渲染导出任务推入队列，附带 token 与 user 信息以绕过前端的登录拦截
-            const job = await exportQueue.add('export-jobs', {
+        // 统一通过阿里云函数计算（FC 3.0）进行异步导出
+        try {
+            await fcService.invokeExportAsync({
                 bookId,
-                format: 'pdf',
-                token: req.token,
+                taskId,
+                token: req.token || '',
                 user,
-            }, {
-                jobId: taskId,
+                type: type as 'pdf' | 'video',
+                pageSize: book.pageSize || 'A4'
             });
 
             res.status(202).json({
                 success: true,
                 jobId: taskId,
-                message: 'PDF export job queued'
+                message: type === 'pdf' 
+                    ? 'PDF export job initiated via Aliyun FC'
+                    : '3D Video export job initiated via Aliyun FC'
             });
-        } else {
-            // 异步触发阿里云函数计算生成 3D 预览视频
-            try {
-                await fcService.invokeVideoExportAsync({
-                    bookId,
-                    taskId,
-                    token: req.token || '',
-                    user,
-                });
-
-                res.status(202).json({
-                    success: true,
-                    jobId: taskId,
-                    message: '3D Video export job initiated'
-                });
-            } catch (err) {
-                // 触发失败，立即置状态为失败并写入错误信息
-                await pool.query(
-                    `UPDATE export_tasks SET status = 'failed', error_message = ? WHERE id = ?`,
-                    [(err as Error).message, taskId]
-                );
-                throw err;
-            }
+        } catch (err) {
+            // 触发失败，立即置状态为失败并写入错误信息
+            await pool.query(
+                `UPDATE export_tasks SET status = 'failed', error_message = ? WHERE id = ?`,
+                [(err as Error).message, taskId]
+            );
+            throw err;
         }
     } catch (error) {
         console.error('Queue export failed:', error);

@@ -31,13 +31,15 @@ export class FcService {
     }
 
     /**
-     * 异步调用阿里云函数计算触发 3D 书籍预览视频生成
+     * 异步调用阿里云函数计算触发导出功能（支持 3D 视频及 PDF 导出）
      */
-    async invokeVideoExportAsync(params: {
+    async invokeExportAsync(params: {
         bookId: string;
         taskId: string;
         token: string;
         user: any;
+        type: 'pdf' | 'video';
+        pageSize?: string;
     }): Promise<boolean> {
         const frontendUrl = process.env.APP_URL || 'http://localhost:5173';
         const callbackUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/export/webhook/video?secret=${config.fc.webhookSecret}`;
@@ -49,6 +51,8 @@ export class FcService {
             callbackUrl,
             token: params.token,
             user: params.user,
+            exportType: params.type,
+            pageSize: params.pageSize || 'A4',
             ossRegion: config.oss.region,
             ossBucket: config.oss.bucket,
             ossPrefix: config.oss.prefix,
@@ -58,7 +62,7 @@ export class FcService {
         const isLocal = config.nodeEnv === 'development' || !config.fc.endpoint;
 
         if (isLocal) {
-            console.log('[FC Service] Development mode or missing FC_ENDPOINT detected. Using local video export fallback...');
+            console.log(`[FC Service] Local fallback mode: Generating ${params.type} export...`);
             
             // 异步后台运行，避免阻塞前端请求
             const fcGeneratorPath = path.resolve(__dirname, '../../fc-video-generator/index.js');
@@ -84,14 +88,14 @@ export class FcService {
                 try {
                     await handler(mockEvent, mockContext);
                 } catch (err) {
-                    console.error('[FC Service] Local fallback video generation execution error:', err);
+                    console.error(`[FC Service] Local fallback ${params.type} generation execution error:`, err);
                     await pool.query(
                         `UPDATE export_tasks SET status = 'failed', error_message = ? WHERE id = ?`,
                         [(err as Error).message, params.taskId]
                     );
                 }
             }).catch(async (err) => {
-                console.error('[FC Service] Failed to load local video generator module:', err);
+                console.error(`[FC Service] Failed to load local ${params.type} generator module:`, err);
                 await pool.query(
                     `UPDATE export_tasks SET status = 'failed', error_message = ? WHERE id = ?`,
                     [(err as Error).message, params.taskId]
@@ -122,7 +126,7 @@ export class FcService {
         invokeRequest.headers = invokeHeaders;
 
         const functionName = config.fc.functionName;
-        console.log(`[FC Service] Invoking FC function "${functionName}" asynchronously for book ${params.bookId}...`);
+        console.log(`[FC Service] Invoking FC function "${functionName}" asynchronously for book ${params.bookId} (type: ${params.type})...`);
         
         try {
             await this.client.invokeFunction(functionName, invokeRequest);
