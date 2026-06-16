@@ -1,5 +1,5 @@
-# 使用与 package.json 严格一致的 Playwright 官方镜像
-FROM docker.m.daocloud.io/mcr/playwright:v1.58.1-jammy
+# 使用与 package.json 严格一致的 Playwright 官方镜像 (采用微软中国专用官方镜像端点)
+FROM mcr.azure.cn/playwright:v1.58.1-jammy
 
 WORKDIR /app
 
