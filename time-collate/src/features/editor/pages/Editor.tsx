@@ -631,7 +631,7 @@ export function Editor() {
                                                     setShowMoreMenu(false);
                                                     try {
                                                         const token = useAuthStore.getState().token;
-                                                        const response = await fetch(`/api/export/${bookId}?type=pdf`, {
+                                                        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/export/${bookId}?type=pdf`, {
                                                             method: 'POST',
                                                             headers: {
                                                                 'Authorization': `Bearer ${token}`

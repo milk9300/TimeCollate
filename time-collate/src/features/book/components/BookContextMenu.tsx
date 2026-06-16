@@ -58,7 +58,7 @@ export const BookContextMenu: React.FC<BookContextMenuProps> = ({
             if (type === 'pdf') {
                 // PDF export (async queue)
                 const token = useAuthStore.getState().token;
-                const response = await fetch(`/api/export/${bookId}?type=pdf`, {
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/export/${bookId}?type=pdf`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -70,7 +70,7 @@ export const BookContextMenu: React.FC<BookContextMenuProps> = ({
             } else {
                 // Video export (FC async execution)
                 const token = useAuthStore.getState().token;
-                const response = await fetch(`/api/export/${bookId}?type=video`, {
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/export/${bookId}?type=video`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`

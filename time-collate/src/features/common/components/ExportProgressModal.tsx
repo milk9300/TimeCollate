@@ -33,7 +33,7 @@ export const ExportProgressModal: React.FC<ExportProgressModalProps> = ({
         const checkStatus = async () => {
             const token = useAuthStore.getState().token;
             try {
-                const response = await fetch(`/api/export/status/${jobId}`, {
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/export/status/${jobId}`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }

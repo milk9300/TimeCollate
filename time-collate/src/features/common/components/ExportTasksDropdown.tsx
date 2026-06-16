@@ -30,7 +30,7 @@ export function ExportTasksDropdown() {
         if (!showSilently) setIsLoading(true);
         const token = useAuthStore.getState().token;
         try {
-            const response = await fetch('/api/export/tasks', {
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/export/tasks`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
