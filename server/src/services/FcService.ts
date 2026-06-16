@@ -27,6 +27,8 @@ export class FcService {
                 accessKeyId,
                 accessKeySecret,
                 endpoint,
+                connectTimeout: 10000, // 连接超时设为 10 秒
+                readTimeout: 15000,    // 读取响应超时设为 15 秒（防止FC冷启动响应慢）
             });
             const ClientClass = (FC20230330 as any).default || FC20230330;
             this.client = new ClientClass(apiConfig);
