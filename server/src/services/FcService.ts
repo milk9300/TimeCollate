@@ -1,41 +1,23 @@
-import { Readable } from 'stream';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import FC20230330, * as $FC20230330 from '@alicloud/fc20230330';
-import * as $OpenApi from '@alicloud/openapi-client';
+import axios from 'axios';
 import { config } from '../config/index.js';
 import { pool } from '../db/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * 阿里云函数计算调用服务
+ * 
+ * 架构选型说明：
+ * 原方案使用 FC SDK 管控 API（accountId.region.fc.aliyuncs.com）调用函数，
+ * 但该域名在轻量应用服务器的出网策略下无法连通（ConnectTimeout）。
+ * 
+ * 现改为通过 HTTP 触发器的公网地址（*.fcapp.run）直接发送 POST 请求，
+ * 绕过 SDK 管控网络限制，稳定性更高、依赖更少。
+ */
 export class FcService {
-    private client: any = null;
-
-    constructor() {
-        const accessKeyId = config.oss.accessKeyId;
-        const accessKeySecret = config.oss.secretAccessKey;
-        let endpoint = config.fc.endpoint;
-
-        // 防御性设计：自动剔除可能误填的协议头 https:// 或 http:// 以及可能携带的路径
-        if (endpoint) {
-            endpoint = endpoint.replace(/^https?:\/\//i, '').split('/')[0].trim();
-        }
-
-        if (accessKeyId && accessKeySecret && endpoint) {
-            const apiConfig = new $OpenApi.Config({
-                accessKeyId,
-                accessKeySecret,
-                endpoint,
-                connectTimeout: 10000, // 连接超时设为 10 秒
-                readTimeout: 15000,    // 读取响应超时设为 15 秒（防止FC冷启动响应慢）
-            });
-            const ClientClass = (FC20230330 as any).default || FC20230330;
-            this.client = new ClientClass(apiConfig);
-        } else {
-            console.warn('[FC Service] FC configurations (endpoint) missing. Video export will not function.');
-        }
-    }
 
     /**
      * 异步调用阿里云函数计算触发导出功能（支持 3D 视频及 PDF 导出）
@@ -51,7 +33,7 @@ export class FcService {
         const frontendUrl = process.env.APP_URL || 'http://localhost:5173';
         const callbackUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/export/webhook/video?secret=${config.fc.webhookSecret}`;
 
-        const payload = JSON.stringify({
+        const payload = {
             bookId: params.bookId,
             taskId: params.taskId,
             frontendUrl,
@@ -63,10 +45,13 @@ export class FcService {
             ossRegion: config.oss.region,
             ossBucket: config.oss.bucket,
             ossPrefix: config.oss.prefix,
-        });
+            // 直接传递 OSS 凭证，因为 HTTP 触发器模式下 context.credentials 不可用
+            ossAccessKeyId: config.oss.accessKeyId,
+            ossAccessKeySecret: config.oss.secretAccessKey,
+        };
 
-        // 判定是否使用本地开发降级模拟 (development 环境或未配置 FC_ENDPOINT)
-        const isLocal = config.nodeEnv === 'development' || !config.fc.endpoint;
+        // 判定是否使用本地开发降级模拟 (development 环境或未配置 FC_HTTP_URL)
+        const isLocal = config.nodeEnv === 'development' || !config.fc.httpUrl;
 
         if (isLocal) {
             console.log(`[FC Service] Local fallback mode: Generating ${params.type} export...`);
@@ -83,7 +68,7 @@ export class FcService {
                     throw new Error('Handler function not found in fc-video-generator/index.js');
                 }
                 
-                const mockEvent = Buffer.from(payload);
+                const mockEvent = Buffer.from(JSON.stringify(payload));
                 const mockContext = {
                     credentials: {
                         accessKeyId: config.oss.accessKeyId,
@@ -113,35 +98,29 @@ export class FcService {
             return true;
         }
 
-        if (!this.client) {
-            throw new Error('Alibaba Cloud FC SDK Client is not initialized. Check your environment variables.');
-        }
-
-        // 构造流数据作为请求 Body
-        const bodyStream = new Readable();
-        bodyStream.push(payload);
-        bodyStream.push(null);
-
-        // 指定异步执行 Header: x-fc-invocation-type = Async
-        const invokeHeaders: Record<string, string> = {
-            'x-fc-invocation-type': 'Async',
-        };
-
-        const invokeRequest = new $FC20230330.InvokeFunctionRequest({
-            body: bodyStream,
-        });
-        invokeRequest.headers = invokeHeaders;
-
-        const functionName = config.fc.functionName;
-        console.log(`[FC Service] Invoking FC function "${functionName}" asynchronously for book ${params.bookId} (type: ${params.type})...`);
+        // ========== 生产环境：通过 HTTP 触发器公网地址直接调用 ==========
+        const httpUrl = config.fc.httpUrl;
+        console.log(`[FC Service] Invoking FC via HTTP Trigger: ${httpUrl} (type: ${params.type}, book: ${params.bookId})`);
         
         try {
-            await this.client.invokeFunction(functionName, invokeRequest);
-            console.log(`[FC Service] FC function invoked successfully.`);
+            const response = await axios.post(httpUrl, payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 指定异步执行，FC 立即返回 202 Accepted，函数在后台运行
+                    'x-fc-invocation-type': 'Async',
+                },
+                timeout: 15000, // 15 秒超时（为冷启动预留充足时间）
+            });
+
+            console.log(`[FC Service] FC HTTP Trigger responded: status=${response.status}`);
             return true;
-        } catch (error) {
-            console.error('[FC Service] Failed to invoke FC function:', error);
-            throw error;
+        } catch (error: any) {
+            // 提取可读的错误信息
+            const errMsg = error.response
+                ? `HTTP ${error.response.status}: ${JSON.stringify(error.response.data)}`
+                : error.message;
+            console.error(`[FC Service] Failed to invoke FC via HTTP Trigger:`, errMsg);
+            throw new Error(`FC invocation failed: ${errMsg}`);
         }
     }
 }

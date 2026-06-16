@@ -57,8 +57,17 @@ exports.handler = async (event, context) => {
         pageSize = 'A4',
         ossRegion = 'oss-cn-hangzhou',
         ossBucket = 'time-collate',
-        ossPrefix = 'uploads/'
+        ossPrefix = 'uploads/',
+        ossAccessKeyId,      // HTTP 触发器模式下由后端 payload 传入
+        ossAccessKeySecret,  // HTTP 触发器模式下由后端 payload 传入
     } = eventObj;
+
+    // 凭证优先级：payload 直传 > context.credentials (SDK/STS 模式)
+    const creds = {
+        accessKeyId: ossAccessKeyId || (context.credentials && context.credentials.accessKeyId) || '',
+        accessKeySecret: ossAccessKeySecret || (context.credentials && context.credentials.accessKeySecret) || '',
+        stsToken: (context.credentials && context.credentials.securityToken) || undefined,
+    };
 
     console.log(`[FC Video Generator] Starting task ${taskId} (type: ${exportType}) for book ${bookId}`);
     
@@ -247,12 +256,12 @@ exports.handler = async (event, context) => {
             await browser.close();
             browser = null;
 
-            // 初始化 OSS
+            // 初始化 OSS（使用统一凭证）
             const ossClient = new OSS({
                 region: ossRegion,
-                accessKeyId: context.credentials.accessKeyId,
-                accessKeySecret: context.credentials.accessKeySecret,
-                stsToken: context.credentials.securityToken,
+                accessKeyId: creds.accessKeyId,
+                accessKeySecret: creds.accessKeySecret,
+                stsToken: creds.stsToken,
                 bucket: ossBucket
             });
 
@@ -468,15 +477,15 @@ exports.handler = async (event, context) => {
         execSync(ffmpegCmd);
         console.log(`[FC Video Generator] FFmpeg video compiled successfully.`);
 
-        // 7. 使用临时 STS 凭证初始化阿里云 OSS 客户端，并将生成的视频上传至 OSS 存储库中
-        console.log(`[FC Video Generator] Initializing OSS Client with STS Credentials...`);
+        // 7. 使用统一凭证初始化阿里云 OSS 客户端，并将生成的视频上传至 OSS 存储库中
+        console.log(`[FC Video Generator] Initializing OSS Client...`);
         await reportProgress(callbackUrl, taskId, 95);
 
         const ossClient = new OSS({
             region: ossRegion,
-            accessKeyId: context.credentials.accessKeyId,
-            accessKeySecret: context.credentials.accessKeySecret,
-            stsToken: context.credentials.securityToken,
+            accessKeyId: creds.accessKeyId,
+            accessKeySecret: creds.accessKeySecret,
+            stsToken: creds.stsToken,
             bucket: ossBucket
         });
 

@@ -41,8 +41,8 @@ export const config = {
     },
     // 阿里云 FC 3.0 配置
     fc: {
-        endpoint: process.env.FC_ENDPOINT || '', // 阿里云 FC 3.0 Endpoint
-        functionName: process.env.FC_FUNCTION_NAME || 'video-generator', // 函数名称
+        httpUrl: process.env.FC_HTTP_URL || '', // HTTP 触发器公网访问地址
+        functionName: process.env.FC_FUNCTION_NAME || 'fc-video-generator', // 函数名称
         webhookSecret: process.env.FC_WEBHOOK_SECRET || '', // Webhook 安全令牌
     },
 };
