@@ -15,7 +15,12 @@ export class FcService {
     constructor() {
         const accessKeyId = config.oss.accessKeyId;
         const accessKeySecret = config.oss.secretAccessKey;
-        const endpoint = config.fc.endpoint;
+        let endpoint = config.fc.endpoint;
+
+        // 防御性设计：自动剔除可能误填的协议头 https:// 或 http:// 以及可能携带的路径
+        if (endpoint) {
+            endpoint = endpoint.replace(/^https?:\/\//i, '').split('/')[0].trim();
+        }
 
         if (accessKeyId && accessKeySecret && endpoint) {
             const apiConfig = new $OpenApi.Config({
