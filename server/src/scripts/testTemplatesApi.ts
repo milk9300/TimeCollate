@@ -11,7 +11,8 @@ async function testApiAndDb() {
         port: config.mysql.port,
         user: config.mysql.user,
         password: config.mysql.password,
-        database: config.mysql.database
+        database: config.mysql.database,
+        ssl: config.mysql.ssl
     });
 
     try {

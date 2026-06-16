@@ -1,0 +1,32 @@
+# TimeCollate 3D 视频生成函数计算 (FC 3.0) 配置文件
+# 使用 Serverless Devs 命令行工具进行一键部署
+
+edition: 3.0.0
+name: timecollate-video-generator
+
+vars:
+  region: "cn-hangzhou" # 这里的地域建议与您的阿里云 OSS Bucket 所在地域保持一致 (例如 cn-hangzhou, cn-shanghai)
+
+resources:
+  video_generator_function:
+    component: fc3
+    props:
+      region: ${vars.region}
+      functionName: "video-generator" # 函数名称，需与主后端 .env 中的 FC_FUNCTION_NAME 一致
+      description: "TimeCollate 3D Book Flip Video Generator using Puppeteer and FFmpeg"
+      runtime: "nodejs20" # 运行环境，推荐使用 Node.js 20
+      handler: "index.handler" # 入口函数
+      memorySize: 2048 # 内存配额 (2048MB)，保证 Puppeteer 运行不发生 OOM 且渲染流畅
+      cpu: 1.0 # CPU 核心数 (1核)
+      timeout: 600 # 超时时间 (600秒 = 10分钟)，给长篇书籍留出足够的渲染和导出时间
+      diskSize: 512 # 临时磁盘大小 (512MB)，用于存放截图帧和生成临时视频文件 (运行完会自动清理)
+      code: "./" # 代码所在目录
+      environmentVariables:
+        NODE_ENV: "production"
+      
+      # 挂载官方公共层 (Chromium/Puppeteer 运行环境)
+      # [注意] 由于阿里云在不同地域提供的官方 Puppeteer 公共层名称与版本差异较大（例如某些地域为 Puppeteer17，某些为 Nodejs-Puppeteer24x），
+      # 为了防止部署因地域层版本不匹配报错，在此建议您先将 layers 配置注释。
+      # 部署成功后，直接登录阿里云控制台，在函数配置页的“层”选项中点击“添加官方公共层”，选择最新的 Puppeteer 层绑定即可，这样最为稳妥。
+      # layers:
+      #   - acs:fc:${vars.region}:official:layers/Puppeteer17/versions/1

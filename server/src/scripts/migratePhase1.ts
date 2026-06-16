@@ -28,6 +28,7 @@ async function migrate() {
         user: config.mysql.user,
         password: config.mysql.password,
         database: config.mysql.database,
+        ssl: config.mysql.ssl,
         multipleStatements: true
     });
 

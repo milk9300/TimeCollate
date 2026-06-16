@@ -1,27 +1,23 @@
 version: '3.8'
 
 services:
-  # MySQL 数据库服务
-  mysql:
-    image: mysql:8.0
-    container_name: timecollate-mysql
+  # Redis 任务队列服务 (限额：内存 150MB，CPU 0.5核)
+  redis:
+    image: redis:7-alpine
+    container_name: timecollate-redis
     restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: lsh0903
-      MYSQL_DATABASE: timecollate
-      TZ: Asia/Shanghai
+    command: redis-server --maxmemory 104857600 --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-123456}
     ports:
-      - "3307:3306"
+      - "6379:6379"
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./server/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 150M
 
-  # 后端 API 服务
+  # 后端 API 与 Export Worker 服务 (限额：内存 900MB，为 PDF 导出的 Playwright 留出空间，CPU 1.5核)
   server:
     build:
       context: ./server
@@ -32,17 +28,20 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=root
-      - MYSQL_PASSWORD=lsh0903
-      - MYSQL_DATABASE=timecollate
-      - FRONTEND_URL=http://host.docker.internal:5173
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-123456}
+      # 限制 Node V8 堆内存最大为 384MB，防止内存溢出
+      - NODE_OPTIONS=--max-old-space-size=384
     env_file:
       - ./server/.env
     depends_on:
-      mysql:
-        condition: service_healthy
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 900M
 
 volumes:
-  mysql_data:
+  redis_data:

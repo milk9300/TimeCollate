@@ -206,10 +206,12 @@ exports.handler = async (event, context) => {
         // 翻开每页后停留展示 2 秒 = 60帧
         let hasMoreFlips = true;
         let flipCount = 0;
+        // 防无尽循环保护机制：最大翻页动作数限制为页面数的 2 倍，且最少 100 次，防止页面未正确前进时卡起
+        const maxFlips = Math.max(pageCount * 2, 100);
 
-        while (hasMoreFlips) {
+        while (hasMoreFlips && flipCount < maxFlips) {
             flipCount++;
-            console.log(`[FC Video Generator] Executing page flip #${flipCount}...`);
+            console.log(`[FC Video Generator] Executing page flip #${flipCount}/${maxFlips}...`);
             
             // 触发翻页动作
             const triggered = await page.evaluate(() => {
@@ -300,12 +302,14 @@ exports.handler = async (event, context) => {
         let videoUrl = uploadResult.url;
         console.log(`[FC Video Generator] Video uploaded successfully. URL: ${videoUrl}`);
 
-        // 8. 成功回调，通知主后端
+        // 8. 成功回调，通知主后端 (设置 10 秒超时，防止网络黑洞导致函数挂起)
         await axios.post(callbackUrl, {
             taskId,
             success: true,
             videoUrl,
             ossKey
+        }, {
+            timeout: 10000
         });
 
         return { success: true, videoUrl };
@@ -316,12 +320,14 @@ exports.handler = async (event, context) => {
             await browser.close().catch(() => {});
         }
 
-        // 失败回调，通知主后端
+        // 失败回调，通知主后端 (设置 10 秒超时)
         try {
             await axios.post(callbackUrl, {
                 taskId,
                 success: false,
                 errorMessage: err.message || 'Error occurred during video generation'
+            }, {
+                timeout: 10000
             });
         } catch (callbackErr) {
             console.error('[FC Video Generator] Failed to send failure callback to backend:', callbackErr.message);

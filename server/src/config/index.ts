@@ -17,6 +17,7 @@ export const config = {
         user: process.env.MYSQL_USER || 'root',
         password: process.env.MYSQL_PASSWORD || '',
         database: process.env.MYSQL_DATABASE || 'timecollate',
+        ssl: process.env.MYSQL_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
     },
 
     // 阿里云 OSS 配置 (S3 兼容，保持 oss 键名避免大范围修改)

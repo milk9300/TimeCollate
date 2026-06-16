@@ -16,6 +16,7 @@ async function initDb() {
         port: config.mysql.port,
         user: config.mysql.user,
         password: config.mysql.password,
+        ssl: config.mysql.ssl,
         multipleStatements: true
     });
 
