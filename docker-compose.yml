@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Redis 任务队列服务 (限额：内存 150MB，CPU 0.5核)
   redis:
-    image: redis:7-alpine
+    image: docker.m.daocloud.io/library/redis:7-alpine
     container_name: timecollate-redis
     restart: unless-stopped
     command: redis-server --maxmemory 104857600 --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-123456}
