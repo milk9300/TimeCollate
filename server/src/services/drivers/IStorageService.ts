@@ -38,4 +38,9 @@ export interface IStorageService {
      * 提取图片 URL 中的存储 Key
      */
     extractKey(url: string): string | null;
+
+    /**
+     * 获取文件大小（字节数）
+     */
+    getFileSize(key: string): Promise<number>;
 }

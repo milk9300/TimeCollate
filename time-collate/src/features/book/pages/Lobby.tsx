@@ -21,6 +21,7 @@ import { BookEditModal } from '../components/BookEditModal';
 import { AnnouncementModal } from '../../common/components/AnnouncementModal';
 import { ExportProgressModal } from '../../common/components/ExportProgressModal';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { ShareModal } from '../../common/components/ShareModal';
 import type { Book } from '../../../types';
 
 const bookService = getBookService();
@@ -61,6 +62,12 @@ export function Lobby() {
     }>({ isOpen: false, bookId: '' });
     const [activeExportJobId, setActiveExportJobId] = useState<string | null>(null);
     const [exportTypeTitle, setExportTypeTitle] = useState<string>('');
+
+    // 分享状态
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [shareUrl, setShareUrl] = useState('');
+    const [shareBookTitle, setShareBookTitle] = useState('');
+    const [isGeneratingShare, setIsGeneratingShare] = useState(false);
 
     // 收藏书籍状态
     const [favoritedBooks, setFavoritedBooks] = useState<Book[]>([]);
@@ -254,6 +261,28 @@ export function Lobby() {
         } catch (error) {
             console.error('Failed to update book status in lobby:', error);
             throw error;
+        }
+    };
+
+    // 生成分享链接
+    const handleShareBook = async (bookId: string) => {
+        const book = books.find(b => b.id === bookId);
+        if (!book) return;
+        setIsGeneratingShare(true);
+        try {
+            const response = await axios.post(`/books/${bookId}/share`);
+            if (response.data.success) {
+                setShareUrl(response.data.data.shareUrl);
+                setShareBookTitle(book.title);
+                setIsShareModalOpen(true);
+            } else {
+                throw new Error(response.data.message || '分享链接生成失败');
+            }
+        } catch (error) {
+            console.error('Failed to generate share link in lobby:', error);
+            alert('生成分享链接失败，请稍后再试');
+        } finally {
+            setIsGeneratingShare(false);
         }
     };
 
@@ -528,6 +557,7 @@ export function Lobby() {
                     onEdit={() => handleEditBook(contextMenu.bookId)}
                     onDelete={() => handleDeleteBook(null, contextMenu.bookId)}
                     onStatusUpdate={(newStatus) => handleUpdateBookStatus(contextMenu.bookId, newStatus)}
+                    onShare={() => handleShareBook(contextMenu.bookId)}
                     onExportTriggered={(jobId, type) => {
                         setActiveExportJobId(jobId);
                         setExportTypeTitle(
@@ -588,6 +618,14 @@ export function Lobby() {
                     onClose={() => setActiveExportJobId(null)}
                 />
             )}
+
+            {/* 分享图书弹窗 */}
+            <ShareModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                shareUrl={shareUrl}
+                bookTitle={shareBookTitle}
+            />
         </MainLayout>
     );
 }

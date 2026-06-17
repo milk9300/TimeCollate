@@ -9,7 +9,7 @@ import { useBookStore } from '../../../store';
 // #region 常量定义
 const ZOOM_STEP = 0.1;
 const MIN_ZOOM = 0.4;
-const MAX_ZOOM = 1.4;
+const MAX_ZOOM = 2.0;
 const DEFAULT_ZOOM = 0.7;
 // #endregion
 
@@ -30,6 +30,7 @@ export interface ZoomableCanvasRef {
     zoomOut: () => void;
     resetZoom: () => void;
     zoomTo100: () => void;
+    zoomToScale: (scale: number) => void;
 }
 // #endregion
 
@@ -75,6 +76,12 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
             transformRef.current.centerView(1.0);
         }
     }, []);
+
+    const handleZoomToScale = useCallback((targetScale: number) => {
+        if (transformRef.current) {
+            transformRef.current.centerView(targetScale, 0);
+        }
+    }, []);
     // #endregion
 
     // #region 暴露方法给父组件
@@ -83,7 +90,8 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
         zoomOut: handleZoomOut,
         resetZoom: handleResetZoom,
         zoomTo100: handleZoomTo100,
-    }), [handleZoomIn, handleZoomOut, handleResetZoom, handleZoomTo100]);
+        zoomToScale: handleZoomToScale,
+    }), [handleZoomIn, handleZoomOut, handleResetZoom, handleZoomTo100, handleZoomToScale]);
     // #endregion
 
     // #region 快捷键处理
@@ -195,8 +203,8 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
                 velocityDisabled: false,
             }}
             wheel={{
-                step: 0.08,
-                smoothStep: 0.004,
+                step: 0.05,
+                smoothStep: 0.001,
                 activationKeys: ['Control', 'Meta'],
             }}
             onTransformed={handleTransformChange}

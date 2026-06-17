@@ -64,13 +64,52 @@ export class CloudBookService implements IBookService {
         await this.api.delete(`/books/${id}`);
     }
 
-    async uploadPhoto(file: File): Promise<Photo> {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await this.api.post('/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
+    async uploadPhoto(file: File, onProgress?: (percent: number) => void): Promise<Photo> {
+        // 1. 请求后端的预签名直传凭证
+        const res = await this.api.get('/upload/presigned', {
+            params: {
+                fileName: file.name,
+                contentType: file.type
+            }
         });
-        return response.data.data;
+        const { uploadUrl, ossKey, url } = res.data.data;
+
+        // 2. 利用纯净的 axios 实例直传 OSS，避免后端拦截器携带 Authorization 破坏签名
+        await axios.put(uploadUrl, file, {
+            headers: {
+                'Content-Type': file.type
+            },
+            onUploadProgress: (progressEvent) => {
+                if (progressEvent.total && onProgress) {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    onProgress(percent);
+                }
+            }
+        });
+
+        // 3. 本地构建 Image 获取宽高物理尺寸
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+            const tempUrl = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(tempUrl);
+                resolve({ width: img.naturalWidth, height: img.naturalHeight });
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(tempUrl);
+                resolve({ width: 800, height: 600 }); // fallback 默认尺寸
+            };
+            img.src = tempUrl;
+        });
+
+        return {
+            id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            url, // 预签名读取的 URL（含CDN解析）
+            ossKey,
+            caption: '',
+            width: dimensions.width,
+            height: dimensions.height
+        };
     }
 
     async getDeletedBooks(): Promise<(Book & { deletedAt: number; daysRemaining: number })[]> {

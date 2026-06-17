@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl as getS3SignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../../config/index.js';
 import { IStorageService } from './IStorageService.js';
@@ -258,6 +258,24 @@ export class R2StorageService implements IStorageService {
     }
 
     /**
+     * 获取文件大小（字节数）
+     */
+    async getFileSize(key: string): Promise<number> {
+        if (!key) return 0;
+        try {
+            const command = new HeadObjectCommand({
+                Bucket: config.oss.bucket,
+                Key: key,
+            });
+            const res = await this.client.send(command);
+            return res.ContentLength || 0;
+        } catch (e) {
+            console.error('Failed to get R2 file size:', e);
+            return 0;
+        }
+    }
+
+    /**
      * 根据扩展名匹配 Content-Type
      */
     private getContentType(ext: string): string {
@@ -273,3 +291,4 @@ export class R2StorageService implements IStorageService {
         return mimeTypes[ext] || 'application/octet-stream';
     }
 }
+

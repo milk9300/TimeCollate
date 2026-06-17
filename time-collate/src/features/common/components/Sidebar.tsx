@@ -6,7 +6,8 @@ import {
     MessageSquare,
     ShieldCheck,
     LayoutGrid,
-    Layout
+    Layout,
+    FolderOpen
 } from 'lucide-react';
 import { useAuthStore } from '../../../store/useAuthStore';
 import logoImg from '../../../assets/logo.png';
@@ -24,6 +25,7 @@ export function Sidebar() {
     const mainNavItems = [
         { path: '/', label: '拾光书架', icon: Library },
         { path: '/square', label: '广场', icon: Globe, badge: '新' },
+        { path: '/my/assets', label: '我的素材', icon: FolderOpen },
         { path: '/market', label: '模板市场', icon: LayoutGrid },
         { path: '/my/layouts', label: '我的模板', icon: Layout },
         { path: '/trash', label: '回收站', icon: Trash2 },

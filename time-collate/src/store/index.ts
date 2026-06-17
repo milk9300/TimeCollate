@@ -4,15 +4,29 @@ import { getBookService } from '../services/serviceFactory';
 import { useAuthStore } from './useAuthStore';
 import { DEFAULT_TEMPLATES } from '../rendering/defaultTemplates';
 import axios from 'axios';
+import { debounce } from '../utils/debounce';
 
 // 获取 Service 单例（内部根据环境变量切换 Local/Cloud）
 const bookService = getBookService();
+
+// 全局防抖保存执行器，提取为模块级作用域
+const debouncedSaveFn = debounce(async (book: Book, onSaveSuccess: () => void, onSaveError: () => void) => {
+    try {
+        await bookService.saveBook(book);
+        onSaveSuccess();
+    } catch (e) {
+        console.error('Failed to save book state (debounced)', e);
+        onSaveError();
+    }
+}, 1000);
 
 interface BookState {
     // Data
     currentBook: Book | null;
     isLoading: boolean;
     error: string | null;
+    saveStatus: 'saved' | 'saving' | 'error'; // 新增：云同步保存状态
+    uploadingJobs: Record<string, { name: string; progress: number; status: 'uploading' | 'success' | 'error' }>; // 新增：全局直传任务管理
     editorMode: 'select' | 'hand'; // 编辑器操作模式
     historyPast: Book[];          // 历史状态栈（过去）
     historyFuture: Book[];        // 历史状态栈（未来）
@@ -48,6 +62,7 @@ interface BookState {
     addPageToChapter: (chapterId: string) => Promise<string>;  // 返回新页面ID
     updatePage: (chapterId: string, pageId: string, updates: Partial<Page>) => Promise<void>;
     deletePage: (chapterId: string, pageId: string) => Promise<void>;
+    duplicatePage: (chapterId: string, pageId: string) => Promise<string>;  // 复制页面（共享照片引用），返回新页面ID
     uploadPhotoToPage: (chapterId: string, pageId: string, file: File, slotIndex?: number) => Promise<void>;
     addMockPhotoToPage: (chapterId: string, pageId: string, url: string, caption: string, slotIndex?: number) => Promise<void>;
     deletePhotoFromPage: (chapterId: string, pageId: string, photoId: string) => Promise<void>;
@@ -72,6 +87,12 @@ interface BookState {
 
     // Export Actions
     exportBook: (type: 'pdf' | 'markdown') => Promise<void>;
+
+    // 新增：自动保存与上传动作
+    triggerSaveBook: () => Promise<void>;
+    flushSaveBook: () => void;
+    updateUploadJob: (id: string, name: string, progress: number, status?: 'uploading' | 'success' | 'error') => void;
+    clearUploadJob: (id: string) => void;
 }
 
 // #region Helper functions for Virtual Chapters mapping
@@ -118,7 +139,7 @@ export function flattenChapters(chapters: Chapter[], bookId: string): Page[] {
 
 export const useBookStore = create<BookState>((set, get) => {
     // 内部帮助函数：深拷贝并推送当前状态到撤销栈，保存新状态
-    const saveStateAndHistory = async (updatedBook: Book, skipHistoryPush: boolean = false) => {
+    const saveStateAndHistory = async (updatedBook: Book, skipHistoryPush: boolean = false, immediate: boolean = false) => {
         const { currentBook, historyPast } = get();
         
         let newPast = historyPast;
@@ -129,13 +150,25 @@ export const useBookStore = create<BookState>((set, get) => {
         set({
             currentBook: updatedBook,
             historyPast: newPast,
-            historyFuture: [] // 产生新改变时清空 redo 栈
+            historyFuture: [], // 产生新改变时清空 redo 栈
+            saveStatus: 'saving'
         });
 
-        try {
-            await bookService.saveBook(updatedBook);
-        } catch (e) {
-            console.error('Failed to save book state', e);
+        if (immediate) {
+            debouncedSaveFn.cancel();
+            try {
+                await bookService.saveBook(updatedBook);
+                set({ saveStatus: 'saved' });
+            } catch (e) {
+                console.error('Failed to save book state immediately', e);
+                set({ saveStatus: 'error' });
+            }
+        } else {
+            debouncedSaveFn(
+                updatedBook,
+                () => set({ saveStatus: 'saved' }),
+                () => set({ saveStatus: 'error' })
+            );
         }
     };
 
@@ -143,6 +176,8 @@ export const useBookStore = create<BookState>((set, get) => {
         currentBook: null,
         isLoading: false,
         error: null,
+        saveStatus: 'saved',
+        uploadingJobs: {},
         editorMode: 'select',
         historyPast: [],
         historyFuture: [],
@@ -211,16 +246,11 @@ export const useBookStore = create<BookState>((set, get) => {
             const newFuture = [JSON.parse(JSON.stringify(currentBook)), ...historyFuture];
 
             set({
-                currentBook: previousBook,
                 historyPast: newPast,
                 historyFuture: newFuture
             });
 
-            try {
-                await bookService.saveBook(previousBook);
-            } catch (e) {
-                console.error('Failed to save book during undo', e);
-            }
+            await saveStateAndHistory(previousBook, true, true);
         },
 
         redo: async () => {
@@ -232,16 +262,11 @@ export const useBookStore = create<BookState>((set, get) => {
             const newPast = [...historyPast, JSON.parse(JSON.stringify(currentBook))];
 
             set({
-                currentBook: nextBook,
                 historyPast: newPast,
                 historyFuture: newFuture
             });
 
-            try {
-                await bookService.saveBook(nextBook);
-            } catch (e) {
-                console.error('Failed to save book during redo', e);
-            }
+            await saveStateAndHistory(nextBook, true, true);
         },
 
         loadBook: async (id: string) => {
@@ -443,12 +468,60 @@ export const useBookStore = create<BookState>((set, get) => {
             await saveStateAndHistory(updatedBook);
         },
 
-        uploadPhotoToPage: async (chapterId: string, pageId: string, file: File, slotIndex?: number) => {
+        duplicatePage: async (chapterId: string, pageId: string) => {
             const { currentBook } = get();
+            if (!currentBook) return '';
+
+            const chapters = getVirtualChapters(currentBook.pages);
+            let newPageId = '';
+            const updatedChapters = chapters.map(c => {
+                if (c.id === chapterId) {
+                    const sourceIdx = c.pages.findIndex(p => p.id === pageId);
+                    if (sourceIdx === -1) return c;
+
+                    const sourcePage = c.pages[sourceIdx];
+                    // 深拷贝页面，生成新 ID；照片共享原始引用但生成新照片 ID
+                    newPageId = crypto.randomUUID();
+                    const duplicated: Page = {
+                        ...JSON.parse(JSON.stringify(sourcePage)),
+                        id: newPageId,
+                        isChapterStart: false, // 复制的页面不作为章节起始
+                        photos: sourcePage.photos.map(photo => ({
+                            ...photo,
+                            id: crypto.randomUUID(), // 新照片 ID，但 url/ossKey 共享
+                        })),
+                    };
+
+                    const newPages = [...c.pages];
+                    newPages.splice(sourceIdx + 1, 0, duplicated);
+                    return { ...c, pages: newPages };
+                }
+                return c;
+            });
+
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
+            await saveStateAndHistory(updatedBook);
+            return newPageId;
+        },
+
+        uploadPhotoToPage: async (chapterId: string, pageId: string, file: File, slotIndex?: number) => {
+            const { currentBook, updateUploadJob, clearUploadJob } = get();
             if (!currentBook) return;
 
+            const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            updateUploadJob(jobId, file.name, 0, 'uploading');
+
             try {
-                const uploadedPhoto = await bookService.uploadPhoto(file);
+                const uploadedPhoto = await bookService.uploadPhoto(file, (percent) => {
+                    updateUploadJob(jobId, file.name, percent, 'uploading');
+                });
+                updateUploadJob(jobId, file.name, 100, 'success');
+                
+                // 成功后 1.5s 渐隐清空进度任务
+                setTimeout(() => {
+                    clearUploadJob(jobId);
+                }, 1500);
+
                 const photo = { ...uploadedPhoto, slotIndex };
 
                 const chapters = getVirtualChapters(currentBook.pages);
@@ -475,6 +548,11 @@ export const useBookStore = create<BookState>((set, get) => {
                 await saveStateAndHistory(updatedBook);
             } catch (e) {
                 console.error('Failed to upload photo', e);
+                updateUploadJob(jobId, file.name, 0, 'error');
+                // 错误任务 5s 后清除，避免一直挂载
+                setTimeout(() => {
+                    clearUploadJob(jobId);
+                }, 5000);
             }
         },
 
@@ -712,6 +790,40 @@ export const useBookStore = create<BookState>((set, get) => {
                 console.error('Export failed', e);
                 throw e;
             }
+        },
+
+        triggerSaveBook: async () => {
+            const { currentBook } = get();
+            if (!currentBook) return;
+            set({ saveStatus: 'saving' });
+            try {
+                await bookService.saveBook(currentBook);
+                set({ saveStatus: 'saved' });
+            } catch (e) {
+                console.error('Failed to manually save book state', e);
+                set({ saveStatus: 'error' });
+            }
+        },
+
+        flushSaveBook: () => {
+            debouncedSaveFn.flush();
+        },
+
+        updateUploadJob: (id, name, progress, status = 'uploading') => {
+            set((state) => ({
+                uploadingJobs: {
+                    ...state.uploadingJobs,
+                    [id]: { name, progress, status }
+                }
+            }));
+        },
+
+        clearUploadJob: (id) => {
+            set((state) => {
+                const newJobs = { ...state.uploadingJobs };
+                delete newJobs[id];
+                return { uploadingJobs: newJobs };
+            });
         }
     };
 });

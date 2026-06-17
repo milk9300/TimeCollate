@@ -8,10 +8,13 @@ import {
     getPageAtmosphere, 
     getPageFontFamily, 
     getPageDecorations, 
+    getPageBackgroundImage,
     updatePageDecorations, 
+    parsePageContent,
     type Decoration 
 } from '../utils/textSlotHelper';
 import { STICKER_ASSETS } from './StickerAssets';
+import { useAssetStore } from '../store/useAssetStore';
 
 interface BookRendererProps {
     page: Page;
@@ -41,19 +44,79 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 }) => {
     const editorMode = useBookStore(state => state.editorMode);
     const updatePage = useBookStore(state => state.updatePage);
+    const assetCache = useAssetStore(state => state.assetCache);
 
     // 氛围与字体解析
     const atmosphere = getPageAtmosphere(page.content);
     const fontFamily = getPageFontFamily(page.content);
     const decorations = getPageDecorations(page.content);
+    const customBgImage = getPageBackgroundImage(page.content);
 
     // 拖动临时状态和选中状态
     const [dragState, setDragState] = useState<{ id: string; x: number; y: number } | null>(null);
     const [activeStickerId, setActiveStickerId] = useState<string | null>(null);
+    const [snapLines, setSnapLines] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
     // 根据 pageSize 获取实际物理尺寸
     const dimensions = useMemo(() => PAGE_SIZES[pageSize] || PAGE_SIZES.A4, [pageSize]);
     const { width: baseWidth, height: baseHeight } = dimensions;
+
+    // 获取当前布局对应的模板 Schema，用于磁吸参考点计算
+    const templates = useBookStore(state => state.templates || []);
+    const template = useMemo(() => {
+        return templates.find(t => t.id === page.layout);
+    }, [templates, page.layout]);
+
+    // 计算页面内所有对齐线磁吸目标百分比坐标
+    const snapTargets = useMemo(() => {
+        const targetsX: number[] = [50]; // 默认加入页面中轴线
+        const targetsY: number[] = [50];
+
+        // 页面左右与上下安全边距
+        const innerLeft = (12 / baseWidth) * 100;
+        const innerRight = 100 - (12 / baseWidth) * 100;
+        const innerTop = (14 / baseHeight) * 100;
+        const innerBottom = 100 - (12 / baseHeight) * 100;
+
+        targetsX.push(innerLeft, innerRight);
+        targetsY.push(innerTop, innerBottom);
+
+        // 如果存在当前排版模板，加入各个插槽的左右边界及中心点
+        if (template && template.layoutSchema && template.layoutSchema.elements) {
+            const innerWidth = ((baseWidth - 24) / baseWidth) * 100;
+            const innerHeight = ((baseHeight - 26) / baseHeight) * 100;
+
+            const parsedContent = parsePageContent(page.content);
+            const overrides = parsedContent.elementOverrides || {};
+
+            template.layoutSchema.elements.forEach(el => {
+                const override = overrides[el.id] || {};
+                const elLeft = parseFloat(override.left ?? el.style.left) || 0;
+                const elWidth = parseFloat(override.width ?? el.style.width) || 0;
+                const elTop = parseFloat(override.top ?? el.style.top) || 0;
+                const elHeight = parseFloat(override.height ?? el.style.height) || 0;
+
+                const leftPct = innerLeft + (elLeft / 100) * innerWidth;
+                const rightPct = innerLeft + ((elLeft + elWidth) / 100) * innerWidth;
+                const centerXPct = innerLeft + ((elLeft + elWidth / 2) / 100) * innerWidth;
+
+                const topPct = innerTop + (elTop / 100) * innerHeight;
+                const bottomPct = innerTop + ((elTop + elHeight) / 100) * innerHeight;
+                const centerYPct = innerTop + ((elTop + elHeight / 2) / 100) * innerHeight;
+
+                targetsX.push(leftPct, rightPct, centerXPct);
+                targetsY.push(topPct, bottomPct, centerYPct);
+            });
+        }
+
+        // 加入页面上其它贴纸的坐标
+        decorations.forEach(dec => {
+            targetsX.push(dec.x);
+            targetsY.push(dec.y);
+        });
+
+        return { x: targetsX, y: targetsY };
+    }, [template, baseWidth, baseHeight, decorations, page.content]);
 
     const realChapter = useMemo(() => {
         if (!book) return null;
@@ -78,6 +141,12 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 
     // 字体映射
     const fontValue = useMemo(() => {
+        if (fontFamily && fontFamily.startsWith('font-')) {
+            const cachedAsset = assetCache[fontFamily];
+            if (cachedAsset) {
+                return `"${cachedAsset.name}", "Inter", sans-serif`;
+            }
+        }
         switch (fontFamily) {
             case 'serif':
                 return '"Noto Serif SC", "Playfair Display", Georgia, serif';
@@ -87,7 +156,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
             default:
                 return '"Inter", "SF Pro Display", -apple-system, sans-serif';
         }
-    }, [fontFamily]);
+    }, [fontFamily, assetCache]);
 
     // 氛围视觉配置
     const atmosphereStyle = useMemo(() => {
@@ -167,6 +236,31 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeStickerId, decorations, page.content, page.id, activeChapter.id, updatePage, readOnly]);
+ 
+    // 动态注入自定义字体文件 @font-face
+    useEffect(() => {
+        if (!fontFamily || !fontFamily.startsWith('font-')) return;
+        const cachedAsset = assetCache[fontFamily];
+        if (!cachedAsset || !cachedAsset.file_url) return;
+
+        const fontId = `font-face-${fontFamily}`;
+        if (document.getElementById(fontId)) return;
+
+        const style = document.createElement('style');
+        style.id = fontId;
+        style.innerHTML = `
+            @font-face {
+                font-family: '${cachedAsset.name}';
+                src: url('${cachedAsset.file_url}') format('woff2'),
+                     url('${cachedAsset.file_url}') format('woff'),
+                     url('${cachedAsset.file_url}') format('truetype');
+                font-weight: normal;
+                font-style: normal;
+                font-display: swap;
+            }
+        `;
+        document.head.appendChild(style);
+    }, [fontFamily, assetCache]);
 
     // 贴纸拖拽控制逻辑
     const handleStickerMouseDown = (e: React.MouseEvent, dec: Decoration) => {
@@ -195,12 +289,43 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
             const finalX = Math.max(0, Math.min(100, startDecX + pctDeltaX));
             const finalY = Math.max(0, Math.min(100, startDecY + pctDeltaY));
 
-            setDragState({ id: dec.id, x: finalX, y: finalY });
+            // 磁吸计算：在 5px 阈值内
+            const snapThresholdX = (5 / rect.width) * 100;
+            const snapThresholdY = (5 / rect.height) * 100;
+
+            let snappedX = finalX;
+            let snappedY = finalY;
+            let activeSnapLineX: number | null = null;
+            let activeSnapLineY: number | null = null;
+
+            // X 轴磁吸计算（过滤掉贴纸本身的初始坐标防止自吸附）
+            const otherXTargets = snapTargets.x.filter(tx => Math.abs(tx - startDecX) > 0.01);
+            for (const tx of otherXTargets) {
+                if (Math.abs(finalX - tx) < snapThresholdX) {
+                    snappedX = tx;
+                    activeSnapLineX = tx;
+                    break;
+                }
+            }
+
+            // Y 轴磁吸计算
+            const otherYTargets = snapTargets.y.filter(ty => Math.abs(ty - startDecY) > 0.01);
+            for (const ty of otherYTargets) {
+                if (Math.abs(finalY - ty) < snapThresholdY) {
+                    snappedY = ty;
+                    activeSnapLineY = ty;
+                    break;
+                }
+            }
+
+            setDragState({ id: dec.id, x: snappedX, y: snappedY });
+            setSnapLines({ x: activeSnapLineX, y: activeSnapLineY });
         };
 
         const handleMouseUp = () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            setSnapLines({ x: null, y: null });
 
             setDragState(prev => {
                 if (prev && prev.id === dec.id) {
@@ -260,20 +385,22 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
             fontFamily: fontValue,
             position: 'relative',
             overflow: 'hidden',
-            background: atmosphereStyle?.bg || 'var(--theme-bg-gradient, var(--theme-bg, #FFFFFF))',
+            background: customBgImage 
+                ? `url(${customBgImage}) center/cover no-repeat` 
+                : (atmosphereStyle?.bg || 'var(--theme-bg-gradient, var(--theme-bg, #FFFFFF))'),
             color: atmosphereStyle?.primaryColor || 'var(--theme-text)',
             '--theme-font': fontValue,
             '--theme-primary': atmosphereStyle?.primaryColor || 'var(--theme-primary, #1A1A1A)',
             '--theme-accent': atmosphereStyle?.accentColor || 'var(--theme-accent, #6366F1)',
             '--theme-secondary': atmosphereStyle?.primaryColor ? `${atmosphereStyle.primaryColor}df` : 'var(--theme-text-secondary, #4B5563)',
-            '--theme-bg': atmosphereStyle ? (atmosphereStyle.bg.startsWith('linear') ? '#FFFFFF' : atmosphereStyle.bg) : 'var(--theme-bg, #FFFFFF)',
+            '--theme-bg': customBgImage ? '#FFFFFF' : (atmosphereStyle ? (atmosphereStyle.bg.startsWith('linear') ? '#FFFFFF' : atmosphereStyle.bg) : 'var(--theme-bg, #FFFFFF)'),
             '--photo-filter': atmosphereStyle?.filter || 'none',
             '--photo-border': atmosphereStyle?.photoBorder || 'none',
             '--photo-shadow': atmosphereStyle?.photoShadow || 'none',
             '--photo-padding': atmosphereStyle?.photoPadding || '0px',
             '--photo-bg': atmosphereStyle?.photoBg || 'transparent',
         } as any;
-    }, [baseWidth, baseHeight, fontValue, atmosphereStyle]);
+    }, [baseWidth, baseHeight, fontValue, atmosphereStyle, customBgImage]);
 
     return (
         <div
@@ -287,6 +414,60 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
             <div
                 style={mergedStyle}
                 className="flex flex-col shadow-lg print:shadow-none transition-colors duration-300"
+                onDragOver={(e) => {
+                    if (readOnly || editorMode !== 'select') return;
+                    if (e.dataTransfer.types.includes('stickerId') || e.dataTransfer.types.includes('backgroundImageUrl')) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                    }
+                }}
+                onDrop={(e) => {
+                    if (readOnly || editorMode !== 'select') return;
+                    
+                    const bgUrl = e.dataTransfer.getData('backgroundImageUrl');
+                    if (bgUrl) {
+                        e.preventDefault();
+                        const updatedContent = updatePageBackgroundImage(page.content, bgUrl);
+                        updatePage(activeChapter.id, page.id, { content: updatedContent });
+                        return;
+                    }
+
+                    const stickerId = e.dataTransfer.getData('stickerId');
+                    if (!stickerId) return;
+                    e.preventDefault();
+                    
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    
+                    const asset = STICKER_ASSETS[stickerId];
+                    const cachedAsset = assetCache[stickerId];
+                    if (!asset && !cachedAsset) return;
+                    
+                    let decorationType = 'sticker';
+                    let size = 28;
+                    if (asset) {
+                        decorationType = asset.category === 'stamps' ? 'stamp' : 'sticker';
+                        size = decorationType === 'stamp' ? 36 : 28;
+                    } else if (cachedAsset) {
+                        decorationType = cachedAsset.metadata?.category === 'stamps' ? 'stamp' : 'sticker';
+                        size = decorationType === 'stamp' ? 36 : 28;
+                    }
+                    
+                    const newSticker: Decoration = {
+                        id: `sticker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        type: decorationType,
+                        content: stickerId,
+                        x: Math.max(0, Math.min(100, x)),
+                        y: Math.max(0, Math.min(100, y)),
+                        size,
+                        rotate: 0,
+                    };
+                    
+                    const newDecorations = [...decorations, newSticker];
+                    const updatedContent = updatePageDecorations(page.content, newDecorations);
+                    updatePage(activeChapter.id, page.id, { content: updatedContent });
+                }}
             >
                 {/* 1. 纸张纹理层 (Noise Texture) */}
                 <div
@@ -311,16 +492,32 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                 <div className="absolute inset-0 border-[0.5px] border-black/5 pointer-events-none z-[100] print:hidden" />
 
                 {/* 3. 安全边距指示 */}
-                <div
-                    style={{
-                        position: 'absolute',
-                        inset: `${PRINT_CONSTANTS.SAFE_ZONE}mm`,
-                        border: '1px dashed rgba(60, 132, 244, 0.12)',
-                        pointerEvents: 'none',
-                        zIndex: 100
-                    }}
-                    className="print:hidden"
-                />
+                {!readOnly && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: `${PRINT_CONSTANTS.SAFE_ZONE}mm`,
+                            border: '1px dashed rgba(60, 132, 244, 0.12)',
+                            pointerEvents: 'none',
+                            zIndex: 100
+                        }}
+                        className="print:hidden"
+                    />
+                )}
+
+                {/* 3.1 磁吸辅助对齐线 */}
+                {snapLines.x !== null && (
+                    <div 
+                        className="absolute top-0 bottom-0 border-l border-red-500 border-dashed z-[99] pointer-events-none"
+                        style={{ left: `${snapLines.x}%` }}
+                    />
+                )}
+                {snapLines.y !== null && (
+                    <div 
+                        className="absolute left-0 right-0 border-t border-red-500 border-dashed z-[99] pointer-events-none"
+                        style={{ top: `${snapLines.y}%` }}
+                    />
+                )}
 
                 {/* 4. 动态布局渲染 */}
                 <div className="flex-1 w-full h-full relative z-[5]">
@@ -332,7 +529,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                     const isDragging = dragState && dragState.id === dec.id;
                     const x = isDragging ? dragState.x : dec.x;
                     const y = isDragging ? dragState.y : dec.y;
-                    const isSelected = activeStickerId === dec.id;
+                    const isSelected = !readOnly && activeStickerId === dec.id;
 
                     return (
                         <div
@@ -349,8 +546,13 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                                 transition: isDragging ? 'none' : 'transform 0.1s ease',
                                 ...((() => {
                                     const asset = STICKER_ASSETS[dec.content];
-                                    const isStamp = dec.type === 'stamp' || (asset && asset.category === 'stamps');
-                                    const isSticker = dec.type === 'sticker' || (asset && asset.category === 'stickers');
+                                    const cachedAsset = assetCache[dec.content];
+                                    const isStamp = dec.type === 'stamp' || 
+                                        (asset && asset.category === 'stamps') || 
+                                        (cachedAsset && cachedAsset.metadata?.category === 'stamps');
+                                    const isSticker = dec.type === 'sticker' || 
+                                        (asset && asset.category === 'stickers') || 
+                                        (cachedAsset && cachedAsset.material_type === 'sticker');
                                     
                                     if (isStamp) {
                                         return {
@@ -397,6 +599,49 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                                         </div>
                                     );
                                 }
+                                
+                                // Fallback to database loaded materials cache
+                                const cachedAsset = assetCache[dec.content];
+                                if (cachedAsset) {
+                                    let contentColor = 'var(--theme-primary)';
+                                    if (cachedAsset.metadata?.category === 'stamps') {
+                                        if (cachedAsset.id === 'stamp-wax-seal') {
+                                            contentColor = '#a82525';
+                                        } else if (cachedAsset.id === 'stamp-mail') {
+                                            contentColor = '#1d4ed8';
+                                        } else {
+                                            contentColor = 'var(--theme-accent, #a82525)';
+                                        }
+                                    }
+                                    
+                                    if (cachedAsset.material_type === 'sticker' && cachedAsset.metadata?.svg) {
+                                        return (
+                                            <div 
+                                                style={{ 
+                                                    width: `${dec.size || 16}pt`, 
+                                                    height: `${dec.size || 16}pt`,
+                                                    color: contentColor
+                                                }}
+                                                className="dynamic-svg-sticker"
+                                                dangerouslySetInnerHTML={{ __html: cachedAsset.metadata.svg }}
+                                            />
+                                        );
+                                    } else if (cachedAsset.file_url) {
+                                        return (
+                                            <img
+                                                src={cachedAsset.file_url}
+                                                alt={cachedAsset.name}
+                                                style={{ 
+                                                    width: `${dec.size || 16}pt`, 
+                                                    height: `${dec.size || 16}pt`,
+                                                    objectFit: 'contain'
+                                                }}
+                                                draggable={false}
+                                            />
+                                        );
+                                    }
+                                }
+
                                 return dec.content;
                             })()}
 

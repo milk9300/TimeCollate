@@ -35,7 +35,7 @@ export interface IBookService {
      * 上传图片
      * 在本地模式下，这可能只是返回一个本地 blob URL
      */
-    uploadPhoto(file: File): Promise<Photo>;
+    uploadPhoto(file: File, onProgress?: (percent: number) => void): Promise<Photo>;
 
     /**
      * 获取回收站中的书籍列表

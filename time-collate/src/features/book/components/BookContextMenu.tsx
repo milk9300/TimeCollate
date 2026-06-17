@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Book as BookIcon, Loader2, Download, Trash2, ExternalLink, Image as ImageIcon, Send, Undo2, Film } from 'lucide-react';
+import { FileText, Book as BookIcon, Loader2, Download, Trash2, ExternalLink, Image as ImageIcon, Send, Undo2, Film, Share2 } from 'lucide-react';
 import { getBookService } from '../../../services/serviceFactory';
 import { useAuthStore } from '../../../store/useAuthStore';
 
@@ -15,6 +15,7 @@ interface BookContextMenuProps {
     onExportTriggered?: (jobId: string, type: 'pdf' | 'video') => void;
     isFavorite?: boolean;
     onUnfavorite?: () => void;
+    onShare?: () => void;
 }
 
 /**
@@ -32,7 +33,8 @@ export const BookContextMenu: React.FC<BookContextMenuProps> = ({
     onClose,
     onExportTriggered,
     isFavorite = false,
-    onUnfavorite
+    onUnfavorite,
+    onShare
 }) => {
     const [isExporting, setIsExporting] = useState<string | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -186,6 +188,20 @@ export const BookContextMenu: React.FC<BookContextMenuProps> = ({
                 <ImageIcon size={14} />
                 修改书籍信息
             </button>
+
+            {onShare && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onShare();
+                        onClose();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-[#3B82F6] hover:text-white transition-colors text-left"
+                >
+                    <Share2 size={14} />
+                    发布分享
+                </button>
+            )}
 
             <div className="h-px bg-gray-100 my-1 mx-2" />
 

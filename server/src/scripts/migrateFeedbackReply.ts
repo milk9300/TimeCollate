@@ -7,6 +7,19 @@ import { config } from '../config/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+async function checkColumnExists(connection: mysql.Connection, tableName: string, columnName: string): Promise<boolean> {
+    const dbName = config.mysql.database;
+    const [rows]: any = await connection.query(
+        `SELECT COUNT(*) as count 
+         FROM information_schema.columns 
+         WHERE table_schema = ? 
+           AND table_name = ? 
+           AND column_name = ?`,
+        [dbName, tableName, columnName]
+    );
+    return rows[0].count > 0;
+}
+
 async function migrate() {
     console.log('开始执行反馈回复数据库字段迁移...');
 
@@ -20,6 +33,13 @@ async function migrate() {
     });
 
     try {
+        const hasReplyContent = await checkColumnExists(connection, 'feedbacks', 'reply_content');
+        
+        if (hasReplyContent) {
+            console.log('ℹ️ feedbacks.reply_content 字段已存在，跳过反馈回复迁移。');
+            return;
+        }
+
         const sqlPath = path.join(__dirname, '../../sql/migrations/add_feedback_reply.sql');
         const sql = await fs.readFile(sqlPath, 'utf8');
 

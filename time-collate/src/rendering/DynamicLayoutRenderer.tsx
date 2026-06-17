@@ -4,7 +4,7 @@ import { useBookStore } from '../store';
 import { useMarketStore } from '../store/useMarketStore';
 import { EditableText } from './components/EditableText';
 import { EditablePhoto } from './components/EditablePhoto';
-import { getSlotText, getSlotStyle } from '../utils/textSlotHelper';
+import { getSlotText, getSlotStyle, parsePageContent } from '../utils/textSlotHelper';
 import { getPhotoForSlot } from '../utils/slotHelper';
 
 interface DynamicLayoutRendererProps {
@@ -57,12 +57,15 @@ export const DynamicLayoutRenderer: React.FC<DynamicLayoutRendererProps> = ({ ch
             {/* 循环渲染 Schema 定义的所有插槽元素，套入页边安全边距容器，防止与翻页折角重叠 */}
             <div className="absolute inset-x-[12mm] top-[14mm] bottom-[12mm]">
                 {layoutSchema.elements.map((element) => {
+                    const parsedContent = parsePageContent(page.content);
+                    const elementOverride = parsedContent.elementOverrides?.[element.id] || {};
+
                     const elementStyle: React.CSSProperties = {
                         position: 'absolute',
-                        left: element.style.left,
-                        top: element.style.top,
-                        width: element.style.width,
-                        height: element.style.height,
+                        left: elementOverride.left ?? element.style.left,
+                        top: elementOverride.top ?? element.style.top,
+                        width: elementOverride.width ?? element.style.width,
+                        height: elementOverride.height ?? element.style.height,
                         borderRadius: element.style.borderRadius,
                         borderColor: element.style.borderColor,
                         borderWidth: element.style.borderWidth,

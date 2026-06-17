@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useBookStore, getVirtualChapters } from '../../store';
 import type { Photo } from '../../types';
 import { Plus, RefreshCw, Eraser, Crop } from 'lucide-react';
+import { getThumbnailUrl } from '../../utils/cdn';
 
 interface EditablePhotoProps {
     photo: Photo | undefined;
@@ -82,8 +83,11 @@ export const EditablePhoto: React.FC<EditablePhotoProps> = ({
     };
 
     const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
         if (editorMode !== 'select') return;
+        if (e.dataTransfer.types.includes('stickerId')) {
+            return;
+        }
+        e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         setIsDragOver(true);
     };
@@ -93,11 +97,14 @@ export const EditablePhoto: React.FC<EditablePhotoProps> = ({
     };
 
     const handleDrop = async (e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragOver(false);
         if (editorMode !== 'select') return;
 
         const dragPhotoId = e.dataTransfer.getData('photoId');
+        if (!dragPhotoId) return; // Allow sticker drops to bubble up to BookRenderer
+
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
         const sourcePageId = e.dataTransfer.getData('sourcePageId');
         const sourceChapterId = e.dataTransfer.getData('sourceChapterId');
         const sourceSlotIndexStr = e.dataTransfer.getData('sourceSlotIndex');
@@ -236,7 +243,7 @@ export const EditablePhoto: React.FC<EditablePhotoProps> = ({
 
     const renderImageElement = () => (
         <img
-            src={photo.url}
+            src={getThumbnailUrl(photo.url, 800)}
             alt={alt}
             className="w-full h-full object-cover pointer-events-none select-none"
             style={{

@@ -18,6 +18,7 @@ export interface TextSlotData {
         fontStyle?: string;
         color?: string;
         textAlign?: string;
+        fontFamily?: string;
     };
 }
 
@@ -25,7 +26,9 @@ export interface PageContentJson {
     slots: Record<string, TextSlotData>;
     atmosphere?: string;
     fontFamily?: string;
+    backgroundImage?: string; // 用户自定义的背景图片 url
     decorations?: Decoration[];
+    elementOverrides?: Record<string, { left?: string; top?: string; width?: string; height?: string }>;
 }
 
 /**
@@ -72,6 +75,7 @@ export const getSlotStyle = (content: string, slotId: string, baseStyle: React.C
         fontStyle: slotStyle.fontStyle || baseStyle.fontStyle,
         color: slotStyle.color || baseStyle.color,
         textAlign: slotStyle.textAlign as any || baseStyle.textAlign,
+        fontFamily: slotStyle.fontFamily || baseStyle.fontFamily,
     };
 };
 
@@ -160,6 +164,46 @@ export const updatePageFontFamily = (content: string, fontFamily: string): strin
 export const updatePageDecorations = (content: string, decorations: Decoration[]): string => {
     const data = parsePageContent(content);
     data.decorations = decorations;
+    return JSON.stringify(data);
+};
+
+/**
+ * 更新元素坐标覆写并返回 JSON 字符串
+ */
+export const updateElementOverride = (
+    content: string,
+    elementId: string,
+    styleUpdates: { left?: string; top?: string; width?: string; height?: string }
+): string => {
+    const data = parsePageContent(content);
+    if (!data.elementOverrides) {
+        data.elementOverrides = {};
+    }
+    data.elementOverrides[elementId] = {
+        ...(data.elementOverrides[elementId] || {}),
+        ...styleUpdates
+    };
+    return JSON.stringify(data);
+};
+
+/**
+ * 获取自定义背景图 URL
+ */
+export const getPageBackgroundImage = (content: string): string | undefined => {
+    const data = parsePageContent(content);
+    return data.backgroundImage;
+};
+
+/**
+ * 更新自定义背景图 URL 并在值为空时移除该字段
+ */
+export const updatePageBackgroundImage = (content: string, url: string | null): string => {
+    const data = parsePageContent(content);
+    if (url) {
+        data.backgroundImage = url;
+    } else {
+        delete data.backgroundImage;
+    }
     return JSON.stringify(data);
 };
 

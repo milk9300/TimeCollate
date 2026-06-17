@@ -96,4 +96,11 @@ export function signAvatarUrl(avatarUrl: string | null | undefined, expires: num
     // 兼容普通非 OSS 物理/外部图片 URL
     return avatarUrl && !avatarUrl.startsWith('blob:') && !avatarUrl.startsWith('data:') ? avatarUrl : null;
 }
-
+/**
+ * 获取 OSS 文件大小（字节数）
+ * @param ossKey OSS 存储键
+ */
+export async function getFileSize(ossKey: string): Promise<number> {
+    if (!ossKey) return 0;
+    return storageService.getFileSize(ossKey);
+}

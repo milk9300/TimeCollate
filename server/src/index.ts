@@ -15,6 +15,7 @@ import themesRouter from './routes/themes.js';
 import interactionsRouter from './routes/interactions.js';
 import socialRouter from './routes/social.js';
 import notificationsRouter from './routes/notifications.js';
+import assetsRouter from './routes/assets.js';
 import { interactionService } from './services/InteractionService.js';
 import { cleanupService } from './services/CleanupService.js';
 import './queue/exportQueue.js';
@@ -76,6 +77,7 @@ app.use('/api/themes', themesRouter);
 app.use('/api/interactions', interactionsRouter);
 app.use('/api/social', socialRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/assets', assetsRouter);
 
 // 健康检查
 app.get('/health', (_req, res) => {

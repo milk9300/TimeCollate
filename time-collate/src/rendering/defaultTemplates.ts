@@ -19,19 +19,19 @@ export const DEFAULT_TEMPLATES: Template[] = [
                     id: 'tpl-title',
                     type: 'text',
                     role: 'chapter-title',
-                    style: { left: '10%', top: '62%', width: '80%', height: '8%', fontSize: '32pt', fontWeight: 'extrabold', color: '#ffffff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }
+                    style: { left: '8%', top: '62%', width: '84%', height: '8%', fontSize: '32pt', fontWeight: 'extrabold', color: '#ffffff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }
                 },
                 {
                     id: 'tpl-content',
                     type: 'text',
                     role: 'page-content',
-                    style: { left: '10%', top: '72%', width: '80%', height: '16%', fontSize: '13pt', lineHeight: '1.6', color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }
+                    style: { left: '8%', top: '72%', width: '84%', height: '16%', fontSize: '13pt', lineHeight: '1.6', color: '#ffffff', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }
                 },
                 {
                     id: 'tpl-date',
                     type: 'text',
                     role: 'chapter-date',
-                    style: { left: '10%', top: '8%', width: '80%', height: '5%', fontSize: '10pt', textAlign: 'right', color: '#ffffff', fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }
+                    style: { left: '8%', top: '8%', width: '84%', height: '5%', fontSize: '10pt', textAlign: 'right', color: '#ffffff', fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }
                 }
             ]
         }
@@ -136,25 +136,25 @@ export const DEFAULT_TEMPLATES: Template[] = [
                     id: 'photo-0',
                     type: 'photo',
                     slotIndex: 0,
-                    style: { left: '15%', top: '15%', width: '70%', height: '42%' }
+                    style: { left: '8%', top: '15%', width: '84%', height: '42%' }
                 },
                 {
                     id: 'tpl-title',
                     type: 'text',
                     role: 'chapter-title',
-                    style: { left: '15%', top: '65%', width: '70%', height: '8%', fontSize: '26pt', fontWeight: 'black', textAlign: 'center', color: 'var(--theme-primary)' }
+                    style: { left: '8%', top: '65%', width: '84%', height: '8%', fontSize: '26pt', fontWeight: 'black', textAlign: 'center', color: 'var(--theme-primary)' }
                 },
                 {
                     id: 'tpl-date',
                     type: 'text',
                     role: 'chapter-date',
-                    style: { left: '15%', top: '74%', width: '70%', height: '4%', fontSize: '10pt', textAlign: 'center', color: 'var(--theme-accent)', fontWeight: 'bold' }
+                    style: { left: '8%', top: '74%', width: '84%', height: '4%', fontSize: '10pt', textAlign: 'center', color: 'var(--theme-accent)', fontWeight: 'bold' }
                 },
                 {
                     id: 'tpl-content',
                     type: 'text',
                     role: 'page-content',
-                    style: { left: '15%', top: '80%', width: '70%', height: '14%', fontSize: '11pt', lineHeight: '1.6', textAlign: 'center', color: 'var(--theme-secondary)' }
+                    style: { left: '8%', top: '80%', width: '84%', height: '14%', fontSize: '11pt', lineHeight: '1.6', textAlign: 'center', color: 'var(--theme-secondary)' }
                 }
             ]
         }
@@ -212,31 +212,31 @@ export const DEFAULT_TEMPLATES: Template[] = [
                     id: 'tpl-title',
                     type: 'text',
                     role: 'chapter-title',
-                    style: { left: '10%', top: '8%', width: '60%', height: '6%', fontSize: '16pt', fontWeight: 'bold', color: 'var(--theme-primary)' }
+                    style: { left: '8%', top: '8%', width: '48%', height: '6%', fontSize: '16pt', fontWeight: 'bold', color: 'var(--theme-primary)' }
                 },
                 {
                     id: 'tpl-date',
                     type: 'text',
                     role: 'chapter-date',
-                    style: { left: '10%', top: '14%', width: '60%', height: '4%', fontSize: '9pt', color: 'var(--theme-secondary)' }
+                    style: { left: '8%', top: '14%', width: '48%', height: '4%', fontSize: '9pt', color: 'var(--theme-secondary)' }
                 },
                 {
                     id: 'tpl-content',
                     type: 'text',
                     role: 'page-content',
-                    style: { left: '10%', top: '22%', width: '45%', height: '68%', fontSize: '11pt', lineHeight: '1.7', color: 'var(--theme-secondary)' }
+                    style: { left: '8%', top: '22%', width: '48%', height: '68%', fontSize: '11pt', lineHeight: '1.7', color: 'var(--theme-secondary)' }
                 },
                 {
                     id: 'photo-0',
                     type: 'photo',
                     slotIndex: 0,
-                    style: { left: '60%', top: '22%', width: '30%', height: '32%' }
+                    style: { left: '60%', top: '22%', width: '32%', height: '32%' }
                 },
                 {
                     id: 'photo-1',
                     type: 'photo',
                     slotIndex: 1,
-                    style: { left: '60%', top: '58%', width: '30%', height: '32%' }
+                    style: { left: '60%', top: '58%', width: '32%', height: '32%' }
                 }
             ]
         }
@@ -253,31 +253,31 @@ export const DEFAULT_TEMPLATES: Template[] = [
                     id: 'tpl-title',
                     type: 'text',
                     role: 'chapter-title',
-                    style: { left: '12%', top: '10%', width: '76%', height: '6%', fontSize: '18pt', fontWeight: 'bold', color: '#5D4037' }
+                    style: { left: '8%', top: '10%', width: '84%', height: '6%', fontSize: '18pt', fontWeight: 'bold', color: '#5D4037' }
                 },
                 {
                     id: 'tpl-date',
                     type: 'text',
                     role: 'chapter-date',
-                    style: { left: '12%', top: '16%', width: '76%', height: '4%', fontSize: '9pt', color: '#8D6E63' }
+                    style: { left: '8%', top: '16%', width: '84%', height: '4%', fontSize: '9pt', color: '#8D6E63' }
                 },
                 {
                     id: 'photo-0',
                     type: 'photo',
                     slotIndex: 0,
-                    style: { left: '12%', top: '23%', width: '36%', height: '36%' }
+                    style: { left: '8%', top: '23%', width: '40%', height: '36%' }
                 },
                 {
                     id: 'photo-1',
                     type: 'photo',
                     slotIndex: 1,
-                    style: { left: '52%', top: '32%', width: '36%', height: '36%' }
+                    style: { left: '52%', top: '32%', width: '40%', height: '36%' }
                 },
                 {
                     id: 'tpl-content',
                     type: 'text',
                     role: 'page-content',
-                    style: { left: '12%', top: '72%', width: '76%', height: '20%', fontSize: '11pt', lineHeight: '1.8', color: '#5D4037' }
+                    style: { left: '8%', top: '72%', width: '84%', height: '20%', fontSize: '11pt', lineHeight: '1.8', color: '#5D4037' }
                 }
             ]
         }
@@ -294,7 +294,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
                     id: 'tpl-title',
                     type: 'text',
                     role: 'chapter-title',
-                    style: { left: '10%', top: '6%', width: '80%', height: '6%', fontSize: '12pt', color: '#888888', textAlign: 'center' }
+                    style: { left: '8%', top: '6%', width: '84%', height: '6%', fontSize: '12pt', color: '#888888', textAlign: 'center' }
                 },
                 {
                     id: 'photo-0',
@@ -306,7 +306,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
                     id: 'tpl-content',
                     type: 'text',
                     role: 'page-content',
-                    style: { left: '10%', top: '76%', width: '80%', height: '16%', fontSize: '12pt', lineHeight: '1.8', color: '#FFFFEE', textAlign: 'center' }
+                    style: { left: '8%', top: '76%', width: '84%', height: '16%', fontSize: '12pt', lineHeight: '1.8', color: '#FFFFEE', textAlign: 'center' }
                 }
             ]
         }

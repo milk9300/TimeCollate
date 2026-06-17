@@ -201,6 +201,21 @@ export class AliyunOssStorageService implements IStorageService {
     }
 
     /**
+     * 获取文件大小（字节数）
+     */
+    async getFileSize(key: string): Promise<number> {
+        if (!key) return 0;
+        const cleanKey = key.startsWith('/') ? key.slice(1) : key;
+        try {
+            const result = await this.client.head(cleanKey);
+            return parseInt((result.res.headers as any)['content-length'] || '0', 10);
+        } catch (e) {
+            console.error('Failed to get Aliyun OSS file size:', e);
+            return 0;
+        }
+    }
+
+    /**
      * 根据扩展名匹配 Content-Type
      */
     private getContentType(ext: string): string {
@@ -216,3 +231,4 @@ export class AliyunOssStorageService implements IStorageService {
         return mimeTypes[ext] || 'application/octet-stream';
     }
 }
+

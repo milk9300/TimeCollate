@@ -12,6 +12,7 @@ const scripts = [
     'migrateSocial.js',
     'migrateFeedbackReply.js',
     'migrateVideoExport.js',
+    'migrateUnifiedAssets.js',
     'seedTemplates.js',
     'seedThemes.js'
 ];

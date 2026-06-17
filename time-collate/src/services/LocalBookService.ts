@@ -111,16 +111,39 @@ export class LocalBookService implements IBookService {
         this.saveToStorage(books);
     }
 
-    async uploadPhoto(file: File): Promise<Photo> {
+    async uploadPhoto(file: File, onProgress?: (percent: number) => void): Promise<Photo> {
+        // 本地模式：通过定时器模拟上传进度的逐步推进
+        if (onProgress) {
+            onProgress(10);
+            await new Promise(r => setTimeout(r, 100));
+            onProgress(40);
+            await new Promise(r => setTimeout(r, 100));
+            onProgress(80);
+            await new Promise(r => setTimeout(r, 100));
+            onProgress(100);
+        }
+
         await this.delay();
-        // 本地模式：使用 URL.createObjectURL 模拟上传
         const url = URL.createObjectURL(file);
-        // 注意：不返回 file 属性，表示上传已完成
+        
+        // 前端本地提取宽高作为 fallback 保障
+        const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                resolve({ width: img.naturalWidth, height: img.naturalHeight });
+            };
+            img.onerror = () => {
+                resolve({ width: 800, height: 600 });
+            };
+            img.src = url;
+        });
+
         return {
-            id: crypto.randomUUID(),
+            id: `local-photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             url,
             caption: file.name,
-            // file 属性不再返回，上传完成后不需要保留
+            width: dimensions.width,
+            height: dimensions.height
         };
     }
 
