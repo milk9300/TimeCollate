@@ -7,6 +7,8 @@ import { FlipBook } from '../../../rendering/FlipBook';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { cloneBookLayout } from '../../../utils/cloneHelper';
+import { useBookStore } from '../../../store';
+import { useMarketStore } from '../../../store/useMarketStore';
 
 /**
  * @description 时光书阅读器页面
@@ -29,7 +31,13 @@ export const Reader: React.FC = () => {
             if (!bookId) return;
             try {
                 const service = getBookService();
-                const data = await service.getBook(bookId);
+                // 并行获取书籍详情、模板库及市场资产，确保自定义排版正常解析渲染
+                const [data] = await Promise.all([
+                    service.getBook(bookId),
+                    useBookStore.getState().loadTemplates(),
+                    useMarketStore.getState().fetchMarketAssets(),
+                ]);
+
                 if (data) {
                     setBook(data);
                 } else {

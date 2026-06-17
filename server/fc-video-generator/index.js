@@ -37,13 +37,31 @@ function cleanDir(dirPath) {
 }
 
 exports.handler = async (event, context) => {
-    // 1. 解析 Payload 输入
+    // 1. 解析 Payload 输入（兼容 SDK 直接调用、HTTP 触发器、本地降级三种模式）
     let eventObj;
     try {
-        eventObj = JSON.parse(event.toString('utf-8'));
+        const rawStr = typeof event === 'string' ? event : event.toString('utf-8');
+        console.log(`[FC Video Generator] Raw event (first 500 chars): ${rawStr.substring(0, 500)}`);
+        
+        const parsed = JSON.parse(rawStr);
+        
+        // HTTP 触发器模式下，FC 可能将 payload 包裹在 body 字段中
+        if (parsed.body && !parsed.bookId) {
+            // body 可能是 JSON 字符串或已解析的对象
+            if (typeof parsed.body === 'string') {
+                eventObj = JSON.parse(parsed.body);
+            } else {
+                eventObj = parsed.body;
+            }
+            console.log('[FC Video Generator] Parsed event from HTTP trigger body wrapper');
+        } else {
+            // SDK 调用或本地降级模式：payload 直接就是 event 内容
+            eventObj = parsed;
+            console.log('[FC Video Generator] Parsed event as direct payload');
+        }
     } catch (e) {
         console.error('Failed to parse event payload:', e);
-        return { success: false, error: 'Invalid JSON payload' };
+        return { success: false, error: 'Invalid JSON payload: ' + e.message };
     }
 
     const {
@@ -62,12 +80,21 @@ exports.handler = async (event, context) => {
         ossAccessKeySecret,  // HTTP 触发器模式下由后端 payload 传入
     } = eventObj;
 
-    // 凭证优先级：payload 直传 > context.credentials (SDK/STS 模式)
-    const creds = {
-        accessKeyId: ossAccessKeyId || (context.credentials && context.credentials.accessKeyId) || '',
-        accessKeySecret: ossAccessKeySecret || (context.credentials && context.credentials.accessKeySecret) || '',
-        stsToken: (context.credentials && context.credentials.securityToken) || undefined,
-    };
+    // 凭证优先级：优先使用 payload 直传的永久凭证（不能携带 stsToken）；若为空则使用 context 中的临时 STS 凭证
+    let creds;
+    if (ossAccessKeyId && ossAccessKeySecret) {
+        creds = {
+            accessKeyId: ossAccessKeyId,
+            accessKeySecret: ossAccessKeySecret,
+            stsToken: undefined // 永久凭证千万不能传 stsToken，否则 OSS 会校验报错
+        };
+    } else {
+        creds = {
+            accessKeyId: (context.credentials && context.credentials.accessKeyId) || '',
+            accessKeySecret: (context.credentials && context.credentials.accessKeySecret) || '',
+            stsToken: (context.credentials && context.credentials.securityToken) || undefined,
+        };
+    }
 
     console.log(`[FC Video Generator] Starting task ${taskId} (type: ${exportType}) for book ${bookId}`);
     
@@ -127,7 +154,7 @@ exports.handler = async (event, context) => {
             await page.setViewport({ width: 1200, height: 900, deviceScaleFactor: 2 });
 
             console.log(`[FC Video Generator] [PDF] Navigating to frontend root to inject auth: ${frontendUrl}`);
-            await page.goto(frontendUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.goto(frontendUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
             
             await page.evaluate((t, u) => {
                 const authState = {
@@ -143,7 +170,7 @@ exports.handler = async (event, context) => {
 
             const targetUrl = `${frontendUrl}/book/${bookId}/preview?print=true`;
             console.log(`[FC Video Generator] [PDF] Loading target book preview URL: ${targetUrl}`);
-            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
             // 进度 30%
             await reportProgress(callbackUrl, taskId, 30);
@@ -306,7 +333,7 @@ exports.handler = async (event, context) => {
 
         // 3. Zero Trust 绕过认证：导航至主域名注入 LocalStorage，接着跳转至实际录像路由
         console.log(`[FC Video Generator] Navigating to frontend root to inject auth: ${frontendUrl}`);
-        await page.goto(frontendUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto(frontendUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
         
         await page.evaluate((t, u) => {
             // 兼容 Zustand 中使用 persist 插件持久化的存储格式
@@ -323,11 +350,26 @@ exports.handler = async (event, context) => {
 
         const targetUrl = `${frontendUrl}/read/${bookId}?mode=record`;
         console.log(`[FC Video Generator] Loading target book URL: ${targetUrl}`);
-        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         // 等待书籍及翻页组件加载完毕
         console.log(`[FC Video Generator] Waiting for flipBook to be ready...`);
         await page.waitForFunction(() => window.isFlipBookReady === true, { timeout: 20000 });
+
+        // 额外等待：确保页面内所有动态排版模板的 Loading 指示器已完全消失
+        console.log(`[FC Video Generator] Waiting for layout templates to be parsed and fully rendered...`);
+        try {
+            await page.waitForFunction(() => {
+                const bodyText = document.body.innerText || '';
+                return !bodyText.includes('正在解析动态排版模板') && !bodyText.includes('正在加载');
+            }, { timeout: 15000 });
+        } catch (waitErr) {
+            console.warn('[FC Video Generator] Warning waiting for loader to disappear:', waitErr.message);
+        }
+
+        // 额外增加 2 秒的安全等待时间，让页面字体、图片等静态资源加载并渲染稳定
+        console.log(`[FC Video Generator] Buffering 2 seconds for visual assets stabilization...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         // 4. 注入虚拟时钟（Virtual Clock），确保不受 FC CPU 性能波动影响，渲染完全确定性、平滑无掉帧
         await page.evaluate(() => {

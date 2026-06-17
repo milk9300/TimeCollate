@@ -4,6 +4,8 @@ import { getBookService } from '../../../services/serviceFactory';
 import type { Book } from '../../../types';
 import { BookRenderer } from '../../../rendering/BookRenderer';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
+import { useBookStore } from '../../../store';
+import { useMarketStore } from '../../../store/useMarketStore';
 
 export const Preview: React.FC = () => {
     const { bookId } = useParams<{ bookId: string }>();
@@ -62,7 +64,12 @@ export const Preview: React.FC = () => {
             if (!bookId) return;
             try {
                 const service = getBookService();
-                const data = await service.getBook(bookId);
+                // 并行加载书籍详情、模板库及市场资产，确保自定义排版在 PDF 预览页正常解析渲染
+                const [data] = await Promise.all([
+                    service.getBook(bookId),
+                    useBookStore.getState().loadTemplates(),
+                    useMarketStore.getState().fetchMarketAssets(),
+                ]);
                 setBook(data);
 
                 // 普通预览模式也尝试发送信号（不影响正常使用）
