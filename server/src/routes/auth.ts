@@ -10,17 +10,10 @@ const router = Router();
  * 用户注册
  */
 router.post('/register', async (req, res) => {
-    try {
-        const { nickname, username, password } = req.body;
-        if (!nickname || !username || !password) {
-            return res.status(400).json({ success: false, error: '必填项不能为空' });
-        }
-
-        const user = await authService.register(nickname, username, password);
-        sendSuccess(res, user, '注册成功');
-    } catch (error) {
-        sendError(res, error as Error);
-    }
+    return res.status(403).json({ 
+        success: false, 
+        error: 'For safety reasons, public registration is currently disabled. Please contact the administrator for an account.' 
+    });
 });
 
 /**

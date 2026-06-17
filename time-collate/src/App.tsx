@@ -11,7 +11,7 @@ const Trash = lazy(() => import('./features/book/pages/Trash').then(m => ({ defa
 const Preview = lazy(() => import('./features/editor/pages/Preview').then(m => ({ default: m.Preview })));
 const SharedBookViewer = lazy(() => import('./features/editor/pages/SharedBookViewer').then(m => ({ default: m.SharedBookViewer })));
 const Login = lazy(() => import('./features/auth/pages/Login').then(m => ({ default: m.Login })));
-const Register = lazy(() => import('./features/auth/pages/Register').then(m => ({ default: m.Register })));
+
 const Profile = lazy(() => import('./features/profile/pages/Profile').then(m => ({ default: m.Profile })));
 const Square = lazy(() => import('./features/book/pages/Square').then(m => ({ default: m.Square })));
 const Reader = lazy(() => import('./features/editor/pages/Reader').then(m => ({ default: m.Reader })));
@@ -92,7 +92,7 @@ function App() {
         <Routes>
           {/* 公开路由 */}
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+
           <Route path="/s/:slug" element={<SharedBookViewer />} />
 
           {/* 私有路由（受保护） */}

@@ -515,6 +515,107 @@ export class AdminService {
         await pool.query('DELETE FROM feedbacks WHERE id = ?', [id]);
         return true;
     }
+
+    /**
+     * 一键生成用户接口
+     */
+    async generateUser(type: 'official' | 'test', phone?: string) {
+        const { v4: uuidv4 } = await import('uuid');
+        const bcrypt = await import('bcryptjs');
+
+        // 生成 16 位混合强密码
+        const generateStrongPassword = () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+';
+            let pass = '';
+            for (let i = 0; i < 16; i++) {
+                pass += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return pass;
+        };
+
+        // 生成随机 4 位昵称后缀
+        const generateNicknameSuffix = () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let suffix = '';
+            for (let i = 0; i < 4; i++) {
+                suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return suffix;
+        };
+
+        // 生成 8 位随机测试用户名后缀
+        const generateRandomTestSuffix = () => {
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            let suffix = '';
+            for (let i = 0; i < 8; i++) {
+                suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return suffix;
+        };
+
+        const password = generateStrongPassword();
+        const passwordHash = await bcrypt.default.hash(password, 10);
+        const nickname = `拾光集#${generateNicknameSuffix()}`;
+        const id = uuidv4();
+        const now = Date.now();
+
+        let username = '';
+        let expiresAt: number | null = null;
+        let finalPhone: string | null = null;
+
+        if (type === 'official') {
+            if (!phone) {
+                throw new Error('正式账号手机号不能为空');
+            }
+            if (!/^\d{11}$/.test(phone)) {
+                throw new Error('手机号格式不正确，必须为11位数字');
+            }
+
+            // 去重校验
+            const [existingPhone] = await pool.query<RowDataPacket[]>(
+                'SELECT id FROM users WHERE phone = ?',
+                [phone]
+            );
+            if (existingPhone.length > 0) {
+                throw new Error('该手机号已被占用');
+            }
+
+            const [existingUser] = await pool.query<RowDataPacket[]>(
+                'SELECT id FROM users WHERE username = ?',
+                [phone]
+            );
+            if (existingUser.length > 0) {
+                throw new Error('该手机号已被注册为用户名');
+            }
+
+            username = phone;
+            finalPhone = phone;
+            expiresAt = null;
+        } else if (type === 'test') {
+            username = `test_${generateRandomTestSuffix()}`;
+            expiresAt = now + 24 * 60 * 60 * 1000;
+            finalPhone = null;
+        } else {
+            throw new Error('无效的账号类型');
+        }
+
+        // 保存到数据库
+        await pool.query(
+            `INSERT INTO users (id, nickname, username, password_hash, role, created_at, phone, expires_at, status) 
+             VALUES (?, ?, ?, ?, 'user', ?, ?, ?, 'active')`,
+            [id, nickname, username, passwordHash, now, finalPhone, expiresAt]
+        );
+
+        return {
+            id,
+            nickname,
+            username,
+            password,
+            type,
+            phone: finalPhone,
+            expiresAt
+        };
+    }
 }
 
 export const adminService = new AdminService();

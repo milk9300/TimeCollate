@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { User, Lock, ArrowRight, MessageCircle, Phone, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { User, Lock, ArrowRight } from 'lucide-react';
 import axios from 'axios';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { AuthLayout } from '../components/AuthLayout';
@@ -50,9 +50,7 @@ export const Login: React.FC = () => {
         }
     };
 
-    const handleComingSoon = () => {
-        alert('该登录方式正在快马加鞭准备中，敬请期待！');
-    };
+
 
     return (
         <AuthLayout>
@@ -65,7 +63,7 @@ export const Login: React.FC = () => {
 
                 <form onSubmit={handleLogin} className="space-y-5">
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-700 ml-1">用户名 / 邮箱</label>
+                        <label className="text-xs font-bold text-gray-700 ml-1">用户名</label>
                         <div className="relative group">
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors">
                                 <User size={18} />
@@ -75,7 +73,7 @@ export const Login: React.FC = () => {
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="w-full input-login rounded-2xl py-3.5 pl-12 pr-6 focus:outline-none placeholder:text-gray-400 font-medium text-gray-800 text-sm"
-                                placeholder="输入您的账号"
+                                placeholder="输入您的用户名"
                                 required
                                 tabIndex={1}
                             />
@@ -121,36 +119,8 @@ export const Login: React.FC = () => {
                     </button>
                 </form>
 
-                <div className="mt-6 text-center">
-                    <p className="text-gray-500 text-xs font-medium">
-                        还没有账号？{' '}
-                        <Link to="/register" tabIndex={5} className="text-indigo-600 font-bold hover:text-indigo-800 transition-colors decoration-2 underline-offset-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded px-1">立即注册</Link>
-                    </p>
-                </div>
 
-                <div className="mt-6">
-                    <div className="relative flex items-center justify-center mb-5">
-                        <div className="w-full h-px bg-white/30" />
-                        <span className="absolute bg-white/40 backdrop-blur-sm border border-white/20 px-3 py-1 rounded-full text-[10px] font-bold text-indigo-900/60 tracking-widest uppercase">或者使用</span>
-                    </div>
 
-                    <div className="flex items-center justify-center gap-6">
-                        <button
-                            onClick={handleComingSoon}
-                            className="flex items-center justify-center w-14 h-14 bg-white/75 hover:bg-white border-0 rounded-full shadow-[0_4px_12px_rgba(255,255,255,0.8),_0_2px_4px_rgba(0,0,0,0.04)] active:scale-95 transition-all duration-300 group cursor-pointer"
-                            title="微信登录"
-                        >
-                            <MessageCircle className="text-gray-400 group-hover:text-[#07C160] transition-colors" size={24} />
-                        </button>
-                        <button
-                            onClick={handleComingSoon}
-                            className="flex items-center justify-center w-14 h-14 bg-white/75 hover:bg-white border-0 rounded-full shadow-[0_4px_12px_rgba(255,255,255,0.8),_0_2px_4px_rgba(0,0,0,0.04)] active:scale-95 transition-all duration-300 group cursor-pointer"
-                            title="手机登录"
-                        >
-                            <Phone className="text-gray-400 group-hover:text-indigo-600 transition-colors" size={22} />
-                        </button>
-                    </div>
-                </div>
             </div>
         </AuthLayout>
     );

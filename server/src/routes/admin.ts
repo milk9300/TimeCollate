@@ -159,4 +159,20 @@ router.post('/announcement', async (req, res) => {
     }
 });
 
+/**
+ * 一键生成用户
+ */
+router.post('/users/generate', async (req, res) => {
+    try {
+        const { type, phone } = req.body;
+        if (!type) {
+            return res.status(400).json({ success: false, error: '账号类型不能为空' });
+        }
+        const result = await adminService.generateUser(type, phone);
+        sendSuccess(res, result, '生成用户成功');
+    } catch (error: any) {
+        sendError(res, error.message || '生成用户失败');
+    }
+});
+
 export default router;
