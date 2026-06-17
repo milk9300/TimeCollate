@@ -171,7 +171,7 @@ export function Lobby() {
                 isPublic: bookData.isPublic || false,
                 category: bookData.category,
                 createdAt: Date.now(),
-                chapters: [],
+                pages: [],
                 theme: 'classic',
                 pageSize: 'A4'
             };
@@ -261,25 +261,17 @@ export function Lobby() {
     const totalBooksCount = books.length;
     const totalPagesCount = books.reduce((sum, b) => {
         let count = typeof b.pageCount === 'number' ? b.pageCount : 0;
-        if (count === 0 && b.chapters && Array.isArray(b.chapters)) {
-            b.chapters.forEach(ch => {
-                if (ch.pages && Array.isArray(ch.pages)) {
-                    count += ch.pages.length;
-                }
-            });
+        if (count === 0 && b.pages && Array.isArray(b.pages)) {
+            count += b.pages.length;
         }
         return sum + count;
     }, 0);
     const totalPhotosCount = books.reduce((sum, b) => {
         let count = typeof b.photoCount === 'number' ? b.photoCount : 0;
-        if (count === 0 && b.chapters && Array.isArray(b.chapters)) {
-            b.chapters.forEach(ch => {
-                if (ch.pages && Array.isArray(ch.pages)) {
-                    ch.pages.forEach(p => {
-                        if (p.photos && Array.isArray(p.photos)) {
-                            count += p.photos.filter(ph => ph && ph.url).length;
-                        }
-                    });
+        if (count === 0 && b.pages && Array.isArray(b.pages)) {
+            b.pages.forEach(p => {
+                if (p.photos && Array.isArray(p.photos)) {
+                    count += p.photos.filter(ph => ph && ph.url).length;
                 }
             });
         }

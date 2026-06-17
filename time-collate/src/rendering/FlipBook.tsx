@@ -6,6 +6,7 @@ import { PAGE_SIZES, type PageSize } from './PhysicalConstants';
 import { ThemeProvider } from './ThemeManager';
 import { ChevronLeft, ChevronRight, X, Rocket, BookOpen, Heart, Star, Eye, MessageSquare, Trash2, Send } from 'lucide-react';
 import axios from 'axios';
+import { getVirtualChapters } from '../store';
 import { useAuthStore } from '../store/useAuthStore';
 import { socialService, type Comment } from '../services/socialService';
 
@@ -310,7 +311,8 @@ export const FlipBook: React.FC<FlipBookProps> = ({ book, onClose, isPublicView,
         }
 
         // 3. 章节主体
-        book.chapters.forEach((chapter, chapterIndex) => {
+        const chapters = getVirtualChapters(book.pages || []);
+        chapters.forEach((chapter, chapterIndex) => {
             chapter.pages.forEach((page) => {
                 pages.push({
                     page,

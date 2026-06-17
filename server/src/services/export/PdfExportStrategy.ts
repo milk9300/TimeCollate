@@ -38,8 +38,8 @@ export class PdfExportStrategy implements IExportStrategy {
     async execute(book: Book, res: Response, options?: { token?: string; user?: any }): Promise<void> {
         let browser;
         try {
-            const totalPages = book.chapters.reduce((sum, ch) => sum + ch.pages.length, 0);
-            console.log(`[PDF] Starting export: "${book.title}" (${book.chapters.length} chapters, ${totalPages} pages)`);
+            const totalPages = book.pages.length;
+            console.log(`[PDF] Starting export: "${book.title}" (${totalPages} pages)`);
 
             // 1. 启动浏览器，设置 2x 缩放以获取高清截图
             browser = await chromium.launch({

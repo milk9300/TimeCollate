@@ -29,15 +29,11 @@ const getBookStats = (book: any) => {
     let pageCount = typeof book.pageCount === 'number' ? book.pageCount : 0;
     let photoCount = typeof book.photoCount === 'number' ? book.photoCount : 0;
 
-    if (pageCount === 0 && book.chapters && Array.isArray(book.chapters)) {
-        book.chapters.forEach((ch: any) => {
-            if (ch.pages && Array.isArray(ch.pages)) {
-                pageCount += ch.pages.length;
-                ch.pages.forEach((p: any) => {
-                    if (p.photos && Array.isArray(p.photos)) {
-                        photoCount += p.photos.filter((photo: any) => photo && photo.url).length;
-                    }
-                });
+    if (pageCount === 0 && book.pages && Array.isArray(book.pages)) {
+        pageCount = book.pages.length;
+        book.pages.forEach((p: any) => {
+            if (p.photos && Array.isArray(p.photos)) {
+                photoCount += p.photos.filter((photo: any) => photo && photo.url).length;
             }
         });
     }

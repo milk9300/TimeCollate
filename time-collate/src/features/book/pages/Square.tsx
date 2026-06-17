@@ -139,7 +139,7 @@ export const Square: React.FC = () => {
                 isPublic: bookData.isPublic || false,
                 category: bookData.category || currentInspiration.category,
                 createdAt: Date.now(),
-                chapters: [],
+                pages: [],
                 theme: currentInspiration.theme as any,
                 pageSize: 'A4'
             };

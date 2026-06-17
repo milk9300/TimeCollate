@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useBookStore } from '../../../store';
+import { useBookStore, getVirtualChapters } from '../../../store';
 import { SpreadNavigator } from '../components/SpreadNavigator';
 import { BottomTray } from '../../book/components/BottomTray';
 import { ConfirmModal } from '../../common/components/ConfirmModal';
@@ -102,6 +102,12 @@ export function Editor() {
         loadTemplates,
     } = useBookStore();
 
+    // Derived virtual chapters from flat pages
+    const chapters = useMemo(() => {
+        if (!currentBook || !currentBook.pages) return [];
+        return getVirtualChapters(currentBook.pages);
+    }, [currentBook]);
+
     // Editor UI States
     const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
     const [activePageId, setActivePageId] = useState<string | null>(null);
@@ -154,19 +160,19 @@ export function Editor() {
             if (isEditingCover) {
                 setActiveChapterId(null);
                 setActivePageId(null);
-            } else if (!activeChapterId && currentBook.chapters.length > 0) {
-                setActiveChapterId(currentBook.chapters[0].id);
-                if (currentBook.chapters[0].pages.length > 0) {
-                    setActivePageId(currentBook.chapters[0].pages[0].id);
+            } else if (!activeChapterId && chapters.length > 0) {
+                setActiveChapterId(chapters[0].id);
+                if (chapters[0].pages.length > 0) {
+                    setActivePageId(chapters[0].pages[0].id);
                 }
             }
         }
-    }, [isEditingCover, currentBook]);
+    }, [isEditingCover, currentBook, chapters]);
 
     // 当章节变化时，自动选择其第一个页面
     useEffect(() => {
         if (currentBook && activeChapterId) {
-            const chapter = currentBook.chapters.find(c => c.id === activeChapterId);
+            const chapter = chapters.find(c => c.id === activeChapterId);
             if (chapter && chapter.pages.length > 0) {
                 const pageExistsInChapter = chapter.pages.some(p => p.id === activePageId);
                 if (!pageExistsInChapter) {
@@ -174,7 +180,7 @@ export function Editor() {
                 }
             }
         }
-    }, [activeChapterId]);
+    }, [activeChapterId, chapters]);
 
     // 当选中的编辑照片或文本槽位变化时，自动切换侧边栏并确保抽屉打开
     useEffect(() => {
@@ -372,8 +378,8 @@ export function Editor() {
     // 计算当前页面的对开 Spread 布局
     const activeChapter = useMemo(() => {
         if (!currentBook) return null;
-        return currentBook.chapters.find(c => c.id === activeChapterId) || currentBook.chapters[0];
-    }, [currentBook, activeChapterId]);
+        return chapters.find(c => c.id === activeChapterId) || chapters[0];
+    }, [currentBook, activeChapterId, chapters]);
 
     // 解析当前书籍的封面设计配置，以便获取嵌入的真实底图/插画
     const parsedCover = useMemo(() => {
@@ -414,7 +420,7 @@ export function Editor() {
 
     const selectedPhoto = useMemo(() => {
         if (!activePhotoEdit || !currentBook) return null;
-        for (const chap of currentBook.chapters) {
+        for (const chap of chapters) {
             if (chap.id === activePhotoEdit.chapterId) {
                 const page = chap.pages.find(p => p.id === activePhotoEdit.pageId);
                 if (page) {
@@ -423,11 +429,11 @@ export function Editor() {
             }
         }
         return null;
-    }, [activePhotoEdit, currentBook]);
+    }, [activePhotoEdit, currentBook, chapters]);
 
     const selectedTextSlot = useMemo(() => {
         if (!activeTextEdit || !currentBook) return null;
-        const chapter = currentBook.chapters.find(c => c.id === activeTextEdit.chapterId);
+        const chapter = chapters.find(c => c.id === activeTextEdit.chapterId);
         const page = chapter?.pages.find(p => p.id === activeTextEdit.pageId);
         if (!page) return null;
 
@@ -449,7 +455,7 @@ export function Editor() {
     const updateSelectedTextSlot = useCallback((updates: { text?: string; style?: Partial<TextSlotData['style']> }) => {
         if (!activeTextEdit || !currentBook) return;
         const { chapterId, pageId, slotId } = activeTextEdit;
-        const chapter = currentBook.chapters.find(c => c.id === chapterId);
+        const chapter = chapters.find(c => c.id === chapterId);
         const page = chapter?.pages.find(p => p.id === pageId);
         if (!page) return;
 
@@ -579,7 +585,7 @@ export function Editor() {
                             {/* 3D Preview Toggle */}
                             <button
                                 onClick={() => {
-                                    const hasContent = currentBook?.chapters.some(c => c.pages.length > 0);
+                                    const hasContent = chapters.some(c => c.pages.length > 0);
                                     if (hasContent) {
                                         setIsReadMode(true);
                                     } else {
@@ -878,7 +884,7 @@ export function Editor() {
                                                             pageSize={currentBook.pageSize}
                                                             chapterTitle={activeChapter?.title}
                                                             chapterDate={activeChapter?.date}
-                                                            chapterIndex={currentBook.chapters.findIndex(c => c.id === activeChapter?.id)}
+                                                            chapterIndex={chapters.findIndex(c => c.id === activeChapter?.id)}
                                                             book={currentBook}
                                                             side="left"
                                                         />
@@ -912,7 +918,7 @@ export function Editor() {
                                                             pageSize={currentBook.pageSize}
                                                             chapterTitle={activeChapter?.title}
                                                             chapterDate={activeChapter?.date}
-                                                            chapterIndex={currentBook.chapters.findIndex(c => c.id === activeChapter?.id)}
+                                                            chapterIndex={chapters.findIndex(c => c.id === activeChapter?.id)}
                                                             book={currentBook}
                                                             side="right"
                                                         />

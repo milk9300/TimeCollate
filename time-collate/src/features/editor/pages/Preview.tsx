@@ -4,7 +4,7 @@ import { getBookService } from '../../../services/serviceFactory';
 import type { Book } from '../../../types';
 import { BookRenderer } from '../../../rendering/BookRenderer';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
-import { useBookStore } from '../../../store';
+import { useBookStore, getVirtualChapters } from '../../../store';
 import { useMarketStore } from '../../../store/useMarketStore';
 
 export const Preview: React.FC = () => {
@@ -89,6 +89,11 @@ export const Preview: React.FC = () => {
     if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
     if (error || !book) return <div className="flex items-center justify-center h-screen text-red-500">{error || 'Book not found'}</div>;
 
+    const chapters = React.useMemo(() => {
+        if (!book || !book.pages) return [];
+        return getVirtualChapters(book.pages);
+    }, [book]);
+
     return (
         <ThemeProvider theme={book.theme}>
             <div className="min-h-screen bg-gray-100 print:bg-white flex flex-col items-center py-8 print:py-0">
@@ -101,7 +106,7 @@ export const Preview: React.FC = () => {
                     `}
                 </style>
 
-                {book.chapters.map((chapter, cIndex) => (
+                {chapters.map((chapter, cIndex) => (
                     <div key={chapter.id} className="contents">
                         {chapter.pages.map((page, pIndex) => (
                             <div

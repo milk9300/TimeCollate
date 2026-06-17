@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useBookStore } from '../../store';
+import { useBookStore, getVirtualChapters } from '../../store';
 import type { Photo } from '../../types';
 import { Plus, RefreshCw, Eraser, Crop } from 'lucide-react';
 
@@ -110,9 +110,10 @@ export const EditablePhoto: React.FC<EditablePhotoProps> = ({
             await assignPhotoToSlot(chapterId, pageId, dragPhotoId, slotIndex, sourceSlotIndex);
         } else {
             // 跨页面拖拽移动
-            const finalSourceChapterId = sourceChapterId || (currentBook ? currentBook.chapters.find(c =>
+            const chapters = currentBook ? getVirtualChapters(currentBook.pages || []) : [];
+            const finalSourceChapterId = sourceChapterId || (chapters.find(c =>
                 c.pages.some(p => p.id === sourcePageId)
-            )?.id : undefined);
+            )?.id);
 
             if (!finalSourceChapterId) return;
 

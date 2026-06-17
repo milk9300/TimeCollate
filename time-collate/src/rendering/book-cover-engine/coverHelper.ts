@@ -13,8 +13,8 @@ export function buildCoverConfig(book: Book): BookCoverConfig {
   const sizeDef = PAGE_SIZES[pageSizeName] || PAGE_SIZES.A4;
   
   // 2. 动态计算书脊厚度 (根据内页总页数，预设单张纸厚度 0.125mm)
-  // 如果没有 chapters，默认为 20 页
-  const totalPages = book.chapters?.reduce((sum, chap) => sum + (chap.pages?.length || 0), 0) || 20;
+  // 如果没有 pages，默认为 20 页
+  const totalPages = book.pages?.length || 20;
   const spineWidthMm = Math.max(5.0, totalPages * 0.125); // 最少保留 5mm 物理书脊
 
   // 出血线 (3mm) 与精装包边 (15mm)

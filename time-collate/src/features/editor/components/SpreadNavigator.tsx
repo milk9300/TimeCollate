@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useBookStore } from '../../../store';
+import { useBookStore, getVirtualChapters } from '../../../store';
 import { 
     BookOpen, 
     Plus, 
@@ -412,6 +412,12 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
         reorderChapters
     } = useBookStore();
 
+    // Derived virtual chapters from flat pages
+    const chapters = React.useMemo(() => {
+        if (!currentBook || !currentBook.pages) return [];
+        return getVirtualChapters(currentBook.pages);
+    }, [currentBook]);
+
     // Context menu states
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
     const [showAddMenu, setShowAddMenu] = useState(false);
@@ -431,13 +437,16 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
 
     const handleAddPageToCurrent = async () => {
         let targetChapterId = activeChapterId;
-        if (!targetChapterId && currentBook.chapters.length > 0) {
-            targetChapterId = currentBook.chapters[0].id;
-        } else if (currentBook.chapters.length === 0) {
+        if (!targetChapterId && chapters.length > 0) {
+            targetChapterId = chapters[0].id;
+        } else if (chapters.length === 0) {
             await addChapter("第一章：起航");
             const updatedBook = useBookStore.getState().currentBook;
-            if (updatedBook && updatedBook.chapters.length > 0) {
-                targetChapterId = updatedBook.chapters[0].id;
+            if (updatedBook && updatedBook.pages) {
+                const virtualChaps = getVirtualChapters(updatedBook.pages);
+                if (virtualChaps.length > 0) {
+                    targetChapterId = virtualChaps[0].id;
+                }
             }
         }
 
@@ -470,14 +479,14 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
         if (!over) return;
 
         // Guard: Only handle sorting if the item is indeed a chapter
-        const isChapter = currentBook.chapters.some(c => c.id === active.id);
+        const isChapter = chapters.some(c => c.id === active.id);
         if (!isChapter) return;
 
         if (active.id !== over.id) {
-            const oldIndex = currentBook.chapters.findIndex((c) => c.id === active.id);
-            const newIndex = currentBook.chapters.findIndex((c) => c.id === over.id);
+            const oldIndex = chapters.findIndex((c) => c.id === active.id);
+            const newIndex = chapters.findIndex((c) => c.id === over.id);
             if (oldIndex !== -1 && newIndex !== -1) {
-                const newChapters = arrayMove(currentBook.chapters, oldIndex, newIndex);
+                const newChapters = arrayMove(chapters, oldIndex, newIndex);
                 reorderChapters(newChapters);
             }
         }
@@ -486,7 +495,7 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
     // Calculate absolute indices for all pages across all chapters
     const pageIndexMap: Record<string, number> = {};
     let globalIndex = 1;
-    currentBook.chapters.forEach((ch) => {
+    chapters.forEach((ch) => {
         (ch.pages || []).forEach((p) => {
             pageIndexMap[p.id] = globalIndex++;
         });
@@ -504,7 +513,7 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                         回忆画卷 (Book Map)
                     </h3>
                     <p className="text-[9px] text-gray-400 font-bold mt-0.5">
-                        共 {currentBook.chapters.length} 章节 · {totalPagesCount + 2} 个页面
+                        共 {chapters.length} 章节 · {totalPagesCount + 2} 个页面
                     </p>
                 </div>
                 <div className="relative">
@@ -527,7 +536,7 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                                 <button
                                     onClick={async () => {
                                         setShowAddMenu(false);
-                                        const title = window.prompt("请输入新章节的标题：", `章节 ${currentBook.chapters.length + 1}`);
+                                        const title = window.prompt("请输入新章节的标题：", `章节 ${chapters.length + 1}`);
                                         if (title && title.trim()) {
                                             await addChapter(title.trim());
                                         }
@@ -581,7 +590,7 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                 </div>
 
                 {/* 2. Chapters Accordion / Groups */}
-                {currentBook.chapters.length > 0 ? (
+                {chapters.length > 0 ? (
                     <div className="space-y-4">
                         <DndContext
                             sensors={chapterSensors}
@@ -589,10 +598,10 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                             onDragEnd={handleChapterDragEnd}
                         >
                             <SortableContext
-                                items={currentBook.chapters.map(c => c.id)}
+                                items={chapters.map(c => c.id)}
                                 strategy={verticalListSortingStrategy}
                             >
-                                {currentBook.chapters.map((chapter, chapterIdx) => {
+                                {chapters.map((chapter, chapterIdx) => {
                                     const isChapterActive = activeChapterId === chapter.id && !isEditingCover;
 
                                     return (

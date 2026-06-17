@@ -17,7 +17,7 @@ declare global {
  * 认证中间件
  * 校验请求头中的 Authorization: Bearer <token>
  */
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,6 +26,25 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
 
         const token = authHeader.split(' ')[1];
         const userId = authService.verifyToken(token);
+
+        // 零信任拦截校验：从数据库实时查询状态和过期时间
+        const [rows]: any = await pool.query('SELECT status, expires_at FROM users WHERE id = ?', [userId]);
+        if (rows.length === 0) {
+            return res.status(401).json({ success: false, error: '用户不存在' });
+        }
+        
+        const user = rows[0];
+        
+        // 校验是否过期
+        if (user.expires_at !== null && Number(user.expires_at) < Date.now()) {
+            await pool.query("UPDATE users SET status = 'banned' WHERE id = ?", [userId]);
+            return res.status(401).json({ success: false, error: '账户已过期，请联系管理员' });
+        }
+
+        // 校验是否被封禁
+        if (user.status === 'banned') {
+            return res.status(401).json({ success: false, error: '账户已被封禁，请联系管理员' });
+        }
 
         req.userId = userId;
         req.token = token;

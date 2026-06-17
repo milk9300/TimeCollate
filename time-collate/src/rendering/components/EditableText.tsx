@@ -57,9 +57,8 @@ export const EditableText: React.FC<EditableTextProps> = ({
 
     // Reactive page content for style lookup
     const pageContent = useBookStore(state => {
-        if (!chapterId || !pageId) return '';
-        const chapter = state.currentBook?.chapters.find(c => c.id === chapterId);
-        const page = chapter?.pages.find(p => p.id === pageId);
+        if (!pageId) return '';
+        const page = state.currentBook?.pages?.find(p => p.id === pageId);
         return page?.content || '';
     });
 

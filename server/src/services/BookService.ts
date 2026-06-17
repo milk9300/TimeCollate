@@ -1,5 +1,5 @@
 import { pool } from '../db/index.js';
-import type { Book, Chapter, Page, Photo, ThemeType, PageSize, PaginatedResponse } from '../types/index.js';
+import type { Book, Page, Photo, ThemeType, PageSize, PaginatedResponse } from '../types/index.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { getSignedUrl, signAvatarUrl } from './OssService.js';
 import { interactionService } from './InteractionService.js';
@@ -25,8 +25,8 @@ export class BookService {
                 COALESCE(f.metric_value, 0) as favorites,
                 IF(ul.id IS NOT NULL, 1, 0) as liked,
                 IF(uf.id IS NOT NULL, 1, 0) as favorited,
-                (SELECT COUNT(*) FROM pages p JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id) as page_count,
-                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
+                (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id) as page_count,
+                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id WHERE p.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
              FROM books b
              LEFT JOIN entity_statistics v ON b.id = v.entity_id AND v.entity_type = 'book' AND v.metric_type = 'view'
              LEFT JOIN entity_statistics l ON b.id = l.entity_id AND l.entity_type = 'book' AND l.metric_type = 'like'
@@ -64,7 +64,7 @@ export class BookService {
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
-                chapters: [], // 列表接口不返回详细章节
+                pages: [], // 列表接口不返回详细页面
                 views: row.views,
                 likes: row.likes,
                 favorites: row.favorites,
@@ -96,8 +96,8 @@ export class BookService {
                 COALESCE(v.metric_value, 0) as views,
                 COALESCE(l.metric_value, 0) as likes,
                 COALESCE(f.metric_value, 0) as favorites,
-                (SELECT COUNT(*) FROM pages p JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id) as page_count,
-                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
+                (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id) as page_count,
+                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id WHERE p.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
         `;
         const params: any[] = [];
 
@@ -177,7 +177,7 @@ export class BookService {
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
-                chapters: [],
+                pages: [],
                 views: row.views,
                 likes: row.likes,
                 favorites: row.favorites,
@@ -336,24 +336,13 @@ export class BookService {
         const coverUrl = signCoverUrl(bookRow.cover_url, bookRow.cover_oss_key, 7200);
         const coverThumbnailUrl = signCoverUrl(bookRow.cover_url, bookRow.cover_oss_key, 7200, 'image/resize,w_600/format,webp/quality,q_60');
 
-        // 2. 获取所有章节
-        const [chapterRows] = await pool.query<RowDataPacket[]>(
-            'SELECT * FROM chapters WHERE book_id = ? ORDER BY sort_order',
+        // 2. 获取所有页面
+        const [pageRows] = await pool.query<RowDataPacket[]>(
+            'SELECT * FROM pages WHERE book_id = ? ORDER BY sort_order',
             [id]
         );
 
-        // 3. 获取所有页面
-        const chapterIds = chapterRows.map((c: RowDataPacket) => c.id);
-        let pageRows: RowDataPacket[] = [];
-        if (chapterIds.length > 0) {
-            const [pages] = await pool.query<RowDataPacket[]>(
-                'SELECT * FROM pages WHERE chapter_id IN (?) ORDER BY sort_order',
-                [chapterIds]
-            );
-            pageRows = pages;
-        }
-
-        // 4. 获取所有图片
+        // 3. 获取所有图片
         const pageIds = pageRows.map(p => p.id);
         let photoRows: RowDataPacket[] = [];
         if (pageIds.length > 0) {
@@ -364,7 +353,7 @@ export class BookService {
             photoRows = photos;
         }
 
-        // 5. 组装嵌套结构
+        // 4. 组装嵌套结构
         const photosMap = new Map<string, Photo[]>();
         for (const photo of photoRows) {
             const pageId = photo.page_id;
@@ -393,25 +382,15 @@ export class BookService {
             });
         }
 
-        const pagesMap = new Map<string, Page[]>();
-        for (const page of pageRows) {
-            const chapterId = page.chapter_id;
-            if (!pagesMap.has(chapterId)) {
-                pagesMap.set(chapterId, []);
-            }
-            pagesMap.get(chapterId)!.push({
-                id: page.id,
-                content: page.content || '',
-                layout: page.layout,
-                photos: photosMap.get(page.id) || [],
-            });
-        }
-
-        const chapters: Chapter[] = chapterRows.map((chapter: RowDataPacket) => ({
-            id: chapter.id,
-            title: chapter.title || '',
-            date: chapter.date ? (chapter.date as Date).toISOString().slice(0, 10) : '',
-            pages: pagesMap.get(chapter.id) || [],
+        const pages: Page[] = pageRows.map((page: RowDataPacket) => ({
+            id: page.id,
+            bookId: page.book_id,
+            pageTitle: page.page_title || '',
+            isChapterStart: Boolean(page.is_chapter_start),
+            content: page.content || '',
+            layout: page.layout,
+            sortOrder: Number(page.sort_order),
+            photos: photosMap.get(page.id) || [],
         }));
 
         // 获取实时统计与互动状态 (缓存优先)
@@ -433,7 +412,7 @@ export class BookService {
             status: bookRow.status,
             category: bookRow.category || undefined,
             createdAt: Number(bookRow.created_at),
-            chapters,
+            pages,
             views: stats.views,
             likes: stats.likes,
             favorites: stats.favorites,
@@ -466,8 +445,7 @@ export class BookService {
                 const [photoRows] = await connection.query<RowDataPacket[]>(
                     `SELECT p.oss_key FROM photos p
                      JOIN pages pg ON p.page_id = pg.id
-                     JOIN chapters c ON pg.chapter_id = c.id
-                     WHERE c.book_id = ? AND p.oss_key IS NOT NULL`,
+                     WHERE pg.book_id = ? AND p.oss_key IS NOT NULL`,
                     [book.id]
                 );
                 photoRows.forEach((row: RowDataPacket) => oldOssKeys.add(row.oss_key));
@@ -494,8 +472,8 @@ export class BookService {
                     [book.title, book.author, book.theme, book.pageSize, coverUrl || null, book.coverOssKey || null, book.preface || null, book.showPreface !== false ? 1 : 0, book.isPublic ? 1 : 0, book.category || null, book.id]
                 );
 
-                // 删除旧的章节（级联删除页面和图片）
-                await connection.query('DELETE FROM chapters WHERE book_id = ?', [book.id]);
+                // 删除旧的页面（级联删除图片）
+                await connection.query('DELETE FROM pages WHERE book_id = ?', [book.id]);
             } else {
                 // 新建书籍
                 let coverUrl = book.coverUrl;
@@ -513,33 +491,25 @@ export class BookService {
             if (book.coverOssKey) {
                 newOssKeys.add(book.coverOssKey);
             }
-            for (let ci = 0; ci < book.chapters.length; ci++) {
-                const chapter = book.chapters[ci];
+            for (let pi = 0; pi < book.pages.length; pi++) {
+                const page = book.pages[pi];
                 await connection.query(
-                    'INSERT INTO chapters (id, book_id, title, date, sort_order) VALUES (?, ?, ?, ?, ?)',
-                    [chapter.id, book.id, chapter.title, chapter.date || null, ci]
+                    'INSERT INTO pages (id, book_id, page_title, is_chapter_start, content, layout, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [page.id, book.id, page.pageTitle || '', page.isChapterStart ? 1 : 0, page.content, page.layout, pi]
                 );
 
-                for (let pi = 0; pi < chapter.pages.length; pi++) {
-                    const page = chapter.pages[pi];
+                for (let phi = 0; phi < page.photos.length; phi++) {
+                    const photo = page.photos[phi];
+                    let photoUrl = photo.url;
+                    if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
+                        photoUrl = '';
+                    }
                     await connection.query(
-                        'INSERT INTO pages (id, chapter_id, content, layout, sort_order) VALUES (?, ?, ?, ?, ?)',
-                        [page.id, chapter.id, page.content, page.layout, pi]
+                        'INSERT INTO photos (id, page_id, url, oss_key, caption, width, height, sort_order, scale, x_offset, y_offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        [photo.id, page.id, photoUrl, photo.ossKey || null, photo.caption || '', photo.width || null, photo.height || null, phi, photo.scale !== undefined ? photo.scale : 1.0, photo.xOffset !== undefined ? photo.xOffset : 50, photo.yOffset !== undefined ? photo.yOffset : 50]
                     );
-
-                    for (let phi = 0; phi < page.photos.length; phi++) {
-                        const photo = page.photos[phi];
-                        let photoUrl = photo.url;
-                        if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
-                            photoUrl = '';
-                        }
-                        await connection.query(
-                            'INSERT INTO photos (id, page_id, url, oss_key, caption, width, height, sort_order, scale, x_offset, y_offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                            [photo.id, page.id, photoUrl, photo.ossKey || null, photo.caption || '', photo.width || null, photo.height || null, phi, photo.scale !== undefined ? photo.scale : 1.0, photo.xOffset !== undefined ? photo.xOffset : 50, photo.yOffset !== undefined ? photo.yOffset : 50]
-                        );
-                        if (photo.ossKey) {
-                            newOssKeys.add(photo.ossKey);
-                        }
+                    if (photo.ossKey) {
+                        newOssKeys.add(photo.ossKey);
                     }
                 }
             }
@@ -605,7 +575,7 @@ export class BookService {
             theme: row.theme as ThemeType,
             pageSize: row.page_size as PageSize,
             createdAt: Number(row.created_at),
-            chapters: [],
+            pages: [],
             deletedAt: new Date(row.deleted_at).getTime(),
             daysRemaining: Math.max(0, row.days_remaining),
         }));
@@ -641,8 +611,7 @@ export class BookService {
         const [photoRows] = await pool.query<RowDataPacket[]>(
             `SELECT p.oss_key FROM photos p
              JOIN pages pg ON p.page_id = pg.id
-             JOIN chapters c ON pg.chapter_id = c.id
-             WHERE c.book_id = ? AND p.oss_key IS NOT NULL`,
+             WHERE pg.book_id = ? AND p.oss_key IS NOT NULL`,
             [id]
         );
 
@@ -651,7 +620,7 @@ export class BookService {
             ossKeys.push(bookRows[0].cover_oss_key);
         }
 
-        // 删除书籍（级联删除章节、页面、图片记录）
+        // 删除书籍（级联删除页面、图片记录）
         await pool.query('DELETE FROM books WHERE id = ?', [id]);
 
         return ossKeys;
@@ -712,8 +681,8 @@ export class BookService {
                 COALESCE(f.metric_value, 0) as favorites,
                 IF(ul.id IS NOT NULL, 1, 0) as liked,
                 IF(uf.id IS NOT NULL, 1, 0) as favorited,
-                (SELECT COUNT(*) FROM pages p JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id) as page_count,
-                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
+                (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id) as page_count,
+                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id WHERE p.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
              FROM user_interactions ui
              JOIN books b ON ui.entity_id = b.id AND ui.entity_type = 'book'
              LEFT JOIN entity_statistics v ON b.id = v.entity_id AND v.entity_type = 'book' AND v.metric_type = 'view'
@@ -772,7 +741,7 @@ export class BookService {
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
-                chapters: [],
+                pages: [],
                 views: row.views,
                 likes: row.likes,
                 favorites: row.favorites,

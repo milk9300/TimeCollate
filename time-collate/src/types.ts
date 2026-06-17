@@ -20,9 +20,13 @@ export interface Photo {
 
 export interface Page {
   id: string;
+  bookId?: string;
+  pageTitle?: string;
+  isChapterStart?: boolean;
   content: string;    // 页面正文
   photos: Photo[];    // 页面图片
   layout: string;     // 页面布局类型 (支持静态内置或动态模板 ID)
+  sortOrder?: number;
 }
 
 export interface LayoutElementStyle {
@@ -74,9 +78,10 @@ export interface Template {
 }
 
 /**
- * @description 章节数据结构
- * 一个章节可包含多个物理页面
+ * @description 作品集（书籍）数据结构
  */
+import type { PageSize } from './rendering/PhysicalConstants';
+
 export interface Chapter {
   id: string;
   title: string;      // 章节标题
@@ -84,18 +89,13 @@ export interface Chapter {
   pages: Page[];      // 章节包含的页面列表
 }
 
-/**
- * @description 作品集（书籍）数据结构
- */
-import type { PageSize } from './rendering/PhysicalConstants';
-
 export interface Book {
   id: string;
   userId: string;
   title: string;
   author: string;
   createdAt: number;
-  chapters: Chapter[];
+  pages: Page[];
   theme: string; // 改为 string 以支持内置主题 and 动态主题 ID
   pageSize: PageSize; // 新增：印刷纸张尺寸
   coverUrl?: string;

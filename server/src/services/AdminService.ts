@@ -98,7 +98,7 @@ export class AdminService {
             SELECT 
                 AVG(TIMESTAMPDIFF(SECOND, created_at, updated_at)) as avg_duration,
                 AVG(TIMESTAMPDIFF(SECOND, created_at, updated_at) / NULLIF(
-                    (SELECT COUNT(*) FROM pages p JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = export_tasks.book_id), 0
+                    (SELECT COUNT(*) FROM pages WHERE book_id = export_tasks.book_id), 0
                 )) as avg_page_duration
             FROM export_tasks 
             WHERE format = 'pdf' AND status = 'completed'
@@ -141,8 +141,7 @@ export class AdminService {
         const [avgPagesRows] = await pool.query<RowDataPacket[]>(`
             SELECT COUNT(*) / NULLIF((SELECT COUNT(*) FROM books WHERE deleted_at IS NULL), 0) as avg_pages
             FROM pages p 
-            JOIN chapters c ON p.chapter_id = c.id 
-            JOIN books b ON c.book_id = b.id 
+            JOIN books b ON p.book_id = b.id 
             WHERE b.deleted_at IS NULL
         `);
         const avgPagesPerBook = avgPagesRows[0].avg_pages ? parseFloat(Number(avgPagesRows[0].avg_pages).toFixed(1)) : 0;
@@ -152,8 +151,7 @@ export class AdminService {
             SELECT COUNT(*) / NULLIF((SELECT COUNT(*) FROM books WHERE deleted_at IS NULL), 0) as avg_photos
             FROM photos ph 
             JOIN pages p ON ph.page_id = p.id 
-            JOIN chapters c ON p.chapter_id = c.id 
-            JOIN books b ON c.book_id = b.id 
+            JOIN books b ON p.book_id = b.id 
             WHERE b.deleted_at IS NULL AND ph.url IS NOT NULL AND ph.url != ''
         `);
         const avgPhotosPerBook = avgPhotosRows[0].avg_photos ? parseFloat(Number(avgPhotosRows[0].avg_photos).toFixed(1)) : 0;
@@ -360,9 +358,9 @@ export class AdminService {
                 COALESCE(sv.metric_value, 0) as views,
                 COALESCE(sl.metric_value, 0) as likes,
                 COALESCE(sf.metric_value, 0) as favorites,
-                (SELECT COUNT(*) FROM chapters c WHERE c.book_id = b.id) as chapter_count,
-                (SELECT COUNT(*) FROM pages p JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id) as page_count,
-                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id JOIN chapters c ON p.chapter_id = c.id WHERE c.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
+                (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id AND p.is_chapter_start = 1) as chapter_count,
+                (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id) as page_count,
+                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id WHERE p.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
              FROM books b
              LEFT JOIN users u ON b.user_id = u.id
              LEFT JOIN entity_statistics sv ON b.id = sv.entity_id AND sv.entity_type = 'book' AND sv.metric_type = 'view'

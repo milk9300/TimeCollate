@@ -31,8 +31,7 @@ export const PhotoInspector: React.FC = () => {
     // 查找当前选中的 Photo 数据对象
     let photoData: any = null;
     if (activePhotoEdit && currentBook) {
-        const chapter = currentBook.chapters.find(c => c.id === activePhotoEdit.chapterId);
-        const page = chapter?.pages.find(p => p.id === activePhotoEdit.pageId);
+        const page = currentBook.pages?.find(p => p.id === activePhotoEdit.pageId);
         photoData = page?.photos.find(p => p.id === activePhotoEdit.photoId);
     }
 

@@ -3,7 +3,7 @@ import { PAGE_SIZES, PRINT_CONSTANTS, type PageSize } from './PhysicalConstants'
 import type { Page, Chapter, Book } from '../types';
 import { LayoutRegistry } from './LayoutRegistry';
 import { ThemeDecorations } from './ThemeManager';
-import { useBookStore } from '../store';
+import { useBookStore, getVirtualChapters } from '../store';
 import { 
     getPageAtmosphere, 
     getPageFontFamily, 
@@ -57,7 +57,8 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 
     const realChapter = useMemo(() => {
         if (!book) return null;
-        for (const chap of book.chapters) {
+        const chapters = getVirtualChapters(book.pages || []);
+        for (const chap of chapters) {
             if (chap.pages.some(p => p.id === page.id)) {
                 return chap;
             }

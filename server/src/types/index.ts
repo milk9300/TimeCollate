@@ -18,9 +18,13 @@ export interface Photo {
 
 export interface Page {
     id: string;
+    bookId?: string;
+    pageTitle?: string;
+    isChapterStart?: boolean;
     content: string;
     photos: Photo[];
     layout: string;
+    sortOrder?: number;
 }
 
 export interface Template {
@@ -43,13 +47,6 @@ export interface BookTheme {
     createdAt?: number;
 }
 
-export interface Chapter {
-    id: string;
-    title: string;
-    date: string;
-    pages: Page[];
-}
-
 export type ThemeType = 'classic' | 'modern' | 'warm' | 'magazine';
 export type PageSize = 'A4' | 'A5' | 'B5' | 'LETTER';
 
@@ -59,7 +56,7 @@ export interface Book {
     title: string;
     author: string;
     createdAt: number;
-    chapters: Chapter[];
+    pages: Page[];
     theme: ThemeType;
     pageSize: PageSize;
     coverUrl?: string;

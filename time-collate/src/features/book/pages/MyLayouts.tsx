@@ -87,18 +87,14 @@ export function MyLayouts() {
     let freeCollageCount = 0;
     
     books.forEach(book => {
-        if (book.chapters && Array.isArray(book.chapters)) {
-            book.chapters.forEach(ch => {
-                if (ch.pages && Array.isArray(ch.pages)) {
-                    ch.pages.forEach(p => {
-                        if (p.layout) {
-                            if (p.layout === 'single' || p.layout === 'free') {
-                                freeCollageCount++;
-                            } else {
-                                appliedPagesCount++;
-                            }
-                        }
-                    });
+        if (book.pages && Array.isArray(book.pages)) {
+            book.pages.forEach(p => {
+                if (p.layout) {
+                    if (p.layout === 'single' || p.layout === 'free') {
+                        freeCollageCount++;
+                    } else {
+                        appliedPagesCount++;
+                    }
                 }
             });
         }

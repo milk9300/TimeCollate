@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useBookStore } from '../../../store';
+import { useBookStore, getVirtualChapters } from '../../../store';
 import { Image as ImageIcon, Upload, Trash2, ChevronDown, ChevronUp, AlertCircle, Check } from 'lucide-react';
 import { getPhotoForSlot } from '../../../utils/slotHelper';
 
@@ -32,14 +32,19 @@ export const BottomTray: React.FC<BottomTrayProps> = ({
 
     if (!currentBook) return null;
 
+    const chapters = React.useMemo(() => {
+        if (!currentBook || !currentBook.pages) return [];
+        return getVirtualChapters(currentBook.pages);
+    }, [currentBook]);
+
     // Resolve target IDs with fallback to the first page of the first chapter
-    const targetChapterId = activeChapterId || (currentBook.chapters.length > 0 ? currentBook.chapters[0].id : null);
-    const targetPageId = activePageId || (currentBook.chapters.length > 0 && currentBook.chapters[0].pages.length > 0 ? currentBook.chapters[0].pages[0].id : null);
+    const targetChapterId = activeChapterId || (chapters.length > 0 ? chapters[0].id : null);
+    const targetPageId = activePageId || (chapters.length > 0 && chapters[0].pages.length > 0 ? chapters[0].pages[0].id : null);
 
     if (!targetChapterId || !targetPageId) return null;
 
     // Get active chapter and page
-    const activeChapter = currentBook.chapters.find(c => c.id === targetChapterId);
+    const activeChapter = chapters.find(c => c.id === targetChapterId);
     const activePage = activeChapter?.pages.find(p => p.id === targetPageId);
 
     const photos = (activePage?.photos || []).filter(p => p && p.url);

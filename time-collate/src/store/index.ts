@@ -74,6 +74,48 @@ interface BookState {
     exportBook: (type: 'pdf' | 'markdown') => Promise<void>;
 }
 
+// #region Helper functions for Virtual Chapters mapping
+export function getVirtualChapters(pages: Page[]): Chapter[] {
+    const chapters: Chapter[] = [];
+    if (!pages || pages.length === 0) return chapters;
+
+    let currentChapter: Chapter | null = null;
+
+    for (const page of pages) {
+        if (page.isChapterStart || !currentChapter) {
+            currentChapter = {
+                id: page.id, // 章节 ID 对应其第一页的 ID
+                title: page.pageTitle || '未命名章节',
+                date: new Date(page.sortOrder ? Number(page.sortOrder) * 86400000 : Date.now()).toISOString().split('T')[0], // 默认日期
+                pages: [page]
+            };
+            chapters.push(currentChapter);
+        } else {
+            currentChapter.pages.push(page);
+        }
+    }
+    return chapters;
+}
+
+export function flattenChapters(chapters: Chapter[], bookId: string): Page[] {
+    const pages: Page[] = [];
+    let sortOrder = 0;
+    for (const chapter of chapters) {
+        for (let i = 0; i < chapter.pages.length; i++) {
+            const page = chapter.pages[i];
+            pages.push({
+                ...page,
+                bookId,
+                pageTitle: i === 0 ? chapter.title : '',
+                isChapterStart: i === 0,
+                sortOrder: sortOrder++
+            });
+        }
+    }
+    return pages;
+}
+// #endregion
+
 export const useBookStore = create<BookState>((set, get) => {
     // 内部帮助函数：深拷贝并推送当前状态到撤销栈，保存新状态
     const saveStateAndHistory = async (updatedBook: Book, skipHistoryPush: boolean = false) => {
@@ -238,7 +280,7 @@ export const useBookStore = create<BookState>((set, get) => {
                     title,
                     author,
                     createdAt: Date.now(),
-                    chapters: [],
+                    pages: [],
                     theme: 'classic',
                     pageSize: 'A4',
                     showPreface: true
@@ -266,6 +308,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
+            const chapters = getVirtualChapters(currentBook.pages);
+
             const firstPage: Page = {
                 id: crypto.randomUUID(),
                 content: '',
@@ -280,9 +324,10 @@ export const useBookStore = create<BookState>((set, get) => {
                 pages: [firstPage]
             };
 
+            const updatedChapters = [...chapters, newChapter];
             const updatedBook = {
                 ...currentBook,
-                chapters: [...currentBook.chapters, newChapter]
+                pages: flattenChapters(updatedChapters, currentBook.id)
             };
 
             await saveStateAndHistory(updatedBook);
@@ -292,11 +337,12 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c =>
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c =>
                 c.id === chapterId ? { ...c, ...updates } : c
             );
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -304,9 +350,12 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.filter(c => c.id !== chapterId);
+
             const updatedBook = {
                 ...currentBook,
-                chapters: currentBook.chapters.filter(c => c.id !== chapterId)
+                pages: flattenChapters(updatedChapters, currentBook.id)
             };
 
             await saveStateAndHistory(updatedBook);
@@ -316,7 +365,7 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedBook = { ...currentBook, chapters: newChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(newChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -324,11 +373,12 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c =>
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c =>
                 c.id === chapterId ? { ...c, pages: newPages } : c
             );
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -343,14 +393,15 @@ export const useBookStore = create<BookState>((set, get) => {
                 layout: 'single'
             };
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     return { ...c, pages: [...c.pages, newPage] };
                 }
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
 
             return newPage.id;
@@ -360,7 +411,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p =>
                         p.id === pageId ? { ...p, ...updates } : p
@@ -370,7 +422,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -378,7 +430,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     if (c.pages.length <= 1) return c;
                     return { ...c, pages: c.pages.filter(p => p.id !== pageId) };
@@ -386,7 +439,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -398,7 +451,8 @@ export const useBookStore = create<BookState>((set, get) => {
                 const uploadedPhoto = await bookService.uploadPhoto(file);
                 const photo = { ...uploadedPhoto, slotIndex };
 
-                const updatedChapters = currentBook.chapters.map(c => {
+                const chapters = getVirtualChapters(currentBook.pages);
+                const updatedChapters = chapters.map(c => {
                     if (c.id === chapterId) {
                         const updatedPages = c.pages.map(p => {
                             if (p.id === pageId) {
@@ -417,7 +471,7 @@ export const useBookStore = create<BookState>((set, get) => {
                     return c;
                 });
 
-                const updatedBook = { ...currentBook, chapters: updatedChapters };
+                const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
                 await saveStateAndHistory(updatedBook);
             } catch (e) {
                 console.error('Failed to upload photo', e);
@@ -435,7 +489,8 @@ export const useBookStore = create<BookState>((set, get) => {
                 slotIndex
             };
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
@@ -454,7 +509,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -462,7 +517,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
@@ -475,7 +531,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -483,7 +539,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
@@ -500,7 +557,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -508,7 +565,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
@@ -524,7 +582,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -538,7 +596,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
@@ -560,7 +619,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -568,7 +627,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const chapters = getVirtualChapters(currentBook.pages);
+            const updatedChapters = chapters.map(c => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
@@ -584,7 +644,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return c;
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 
@@ -599,7 +659,8 @@ export const useBookStore = create<BookState>((set, get) => {
             const { currentBook } = get();
             if (!currentBook) return;
 
-            const sourceChapter = currentBook.chapters.find(c => c.id === sourceChapterId);
+            const chapters = getVirtualChapters(currentBook.pages);
+            const sourceChapter = chapters.find(c => c.id === sourceChapterId);
             const sourcePage = sourceChapter?.pages.find(p => p.id === sourcePageId);
             const photoToMove = sourcePage?.photos.find(p => p.id === photoId);
 
@@ -607,7 +668,7 @@ export const useBookStore = create<BookState>((set, get) => {
 
             const updatedPhotoToMove = { ...photoToMove, slotIndex: targetSlotIndex };
 
-            const updatedChapters = currentBook.chapters.map(c => {
+            const updatedChapters = chapters.map(c => {
                 let newPages = c.pages;
 
                 if (c.id === sourceChapterId) {
@@ -634,7 +695,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 return { ...c, pages: newPages };
             });
 
-            const updatedBook = { ...currentBook, chapters: updatedChapters };
+            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
             await saveStateAndHistory(updatedBook);
         },
 

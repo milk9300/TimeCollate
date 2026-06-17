@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useBookStore } from '../../../store';
+import { useBookStore, getVirtualChapters } from '../../../store';
 import { ImagePlus, Calendar, Plus, MoreHorizontal, FileText, Trash2, Settings, Layout, Info } from 'lucide-react';
 import { PAGE_SIZES, type PageSize } from '../../../rendering/PhysicalConstants';
 import { PREFACE_TEMPLATES, compilePrefaceText } from '../../../rendering/constants/prefaceTemplates';
@@ -51,6 +51,11 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
 
     if (!currentBook) return null;
 
+    const chapters = React.useMemo(() => {
+        if (!currentBook || !currentBook.pages) return [];
+        return getVirtualChapters(currentBook.pages);
+    }, [currentBook]);
+
     if (!chapterId) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
@@ -62,7 +67,7 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
         );
     }
 
-    const chapter = currentBook.chapters.find(c => c.id === chapterId);
+    const chapter = chapters.find(c => c.id === chapterId);
     if (!chapter) return null;
 
     const currentPage = chapter.pages.find(p => p.id === activePageId) || chapter.pages[0];

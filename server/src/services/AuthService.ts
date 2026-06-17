@@ -15,6 +15,7 @@ export interface User {
     hasSeenAnnouncement?: boolean;
     role: 'user' | 'admin';
     status: 'active' | 'banned';
+    expiresAt?: number;
 }
 
 export class AuthService {
@@ -79,8 +80,15 @@ export class AuthService {
             createdAt: Number(userRow.created_at),
             hasSeenAnnouncement: Boolean(userRow.has_seen_announcement),
             role: userRow.role as 'user' | 'admin',
-            status: userRow.status as 'active' | 'banned'
+            status: userRow.status as 'active' | 'banned',
+            expiresAt: userRow.expires_at !== null ? Number(userRow.expires_at) : undefined
         };
+
+        // 2.5 检查账号是否过期
+        if (userRow.expires_at !== null && userRow.expires_at < Date.now()) {
+            await pool.query("UPDATE users SET status = 'banned' WHERE id = ?", [userRow.id]);
+            throw new Error('账户已过期，请联系管理员');
+        }
 
         // 3. 检查账户状态
         if (user.status === 'banned') {
@@ -98,7 +106,7 @@ export class AuthService {
      */
     async getUserById(id: string): Promise<User | null> {
         const [rows] = await pool.query<RowDataPacket[]>(
-            'SELECT id, nickname, username, avatar_url as avatarUrl, created_at as createdAt, has_seen_announcement as hasSeenAnnouncement, role, status FROM users WHERE id = ?',
+            'SELECT id, nickname, username, avatar_url as avatarUrl, created_at as createdAt, has_seen_announcement as hasSeenAnnouncement, role, status, expires_at as expiresAt FROM users WHERE id = ?',
             [id]
         );
 
@@ -113,7 +121,8 @@ export class AuthService {
             createdAt: Number(row.createdAt),
             hasSeenAnnouncement: Boolean(row.hasSeenAnnouncement),
             role: row.role as 'user' | 'admin',
-            status: row.status as 'active' | 'banned'
+            status: row.status as 'active' | 'banned',
+            expiresAt: row.expiresAt !== null ? Number(row.expiresAt) : undefined
         } as User;
     }
 

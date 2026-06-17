@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useBookStore } from '../../../store';
+import { useBookStore, getVirtualChapters } from '../../../store';
 import {
     DndContext,
     closestCenter,
@@ -96,6 +96,11 @@ export const ChapterList: React.FC<ChapterListProps> = ({
     const { currentBook, addChapter, deleteChapter, reorderChapters } = useBookStore();
     const [isCreating, setIsCreating] = useState(false);
 
+    const chapters = React.useMemo(() => {
+        if (!currentBook || !currentBook.pages) return [];
+        return getVirtualChapters(currentBook.pages);
+    }, [currentBook]);
+
     const sensors = useSensors(
         useSensor(PointerSensor),
         useSensor(KeyboardSensor, {
@@ -108,9 +113,9 @@ export const ChapterList: React.FC<ChapterListProps> = ({
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
-            const oldIndex = currentBook.chapters.findIndex((c) => c.id === active.id);
-            const newIndex = currentBook.chapters.findIndex((c) => c.id === over.id);
-            const newChapters = arrayMove(currentBook.chapters, oldIndex, newIndex);
+            const oldIndex = chapters.findIndex((c) => c.id === active.id);
+            const newIndex = chapters.findIndex((c) => c.id === over.id);
+            const newChapters = arrayMove(chapters, oldIndex, newIndex);
             reorderChapters(newChapters);
         }
     };
@@ -118,7 +123,7 @@ export const ChapterList: React.FC<ChapterListProps> = ({
     const handleAdd = async () => {
         if (isCreating) return;
         setIsCreating(true);
-        await addChapter(`Chapter ${currentBook.chapters.length + 1}`);
+        await addChapter(`Chapter ${chapters.length + 1}`);
         setIsCreating(false);
     };
 
@@ -166,10 +171,10 @@ export const ChapterList: React.FC<ChapterListProps> = ({
                     onDragEnd={handleDragEnd}
                 >
                     <SortableContext
-                        items={currentBook.chapters.map(c => c.id)}
+                        items={chapters.map(c => c.id)}
                         strategy={verticalListSortingStrategy}
                     >
-                        {currentBook.chapters.map((chapter) => (
+                        {chapters.map((chapter) => (
                             <SortableItem
                                 key={chapter.id}
                                 id={chapter.id}
