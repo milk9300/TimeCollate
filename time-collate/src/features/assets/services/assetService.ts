@@ -168,6 +168,20 @@ export class AssetService {
         const response = await axios.get('/assets/storage-quota');
         return response.data.data;
     }
+
+    /**
+     * 批量删除素材
+     */
+    async batchDeleteMaterials(ids: string[]): Promise<void> {
+        await axios.post('/assets/materials/batch-delete', { ids });
+    }
+
+    /**
+     * 批量移动素材
+     */
+    async batchMoveMaterials(ids: string[], folderId: string | null): Promise<void> {
+        await axios.post('/assets/materials/batch-move', { ids, folderId });
+    }
 }
 
 export const assetService = new AssetService();

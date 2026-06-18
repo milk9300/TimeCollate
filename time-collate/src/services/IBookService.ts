@@ -68,4 +68,24 @@ export interface IBookService {
      * 获取用户收藏的书籍列表
      */
     getFavoritedBooks(userId?: string, page?: number, pageSize?: number): Promise<PaginatedResponse<Book>>;
+
+    /**
+     * 获取用户本人的书模板列表
+     */
+    getBookTemplates(page?: number, pageSize?: number): Promise<PaginatedResponse<Book>>;
+
+    /**
+     * 获取公开的书模板市场列表
+     */
+    getMarketBookTemplates(page?: number, pageSize?: number, category?: string): Promise<PaginatedResponse<Book>>;
+
+    /**
+     * 将某本书发布为模板
+     */
+    publishTemplate(bookId: string, title: string): Promise<string>;
+
+    /**
+     * 套用模板为新书
+     */
+    applyTemplate(templateId: string, title: string): Promise<string>;
 }

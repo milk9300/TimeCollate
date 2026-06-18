@@ -21,6 +21,87 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/books/templates
+ * 获取用户拥有的书模板列表
+ */
+router.get('/templates', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const pageSize = parseInt(req.query.pageSize as string) || 20;
+        const result = await bookService.getBookTemplates(req.userId!, page, pageSize);
+        sendSuccess(res, result);
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * GET /api/books/templates/market
+ * 获取公开的书模板市场列表
+ */
+router.get('/templates/market', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const pageSize = parseInt(req.query.pageSize as string) || 20;
+        const category = req.query.category as string;
+        const result = await bookService.getMarketBookTemplates(page, pageSize, category, req.userId);
+        sendSuccess(res, result);
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * POST /api/books/:id/publish-template
+ * 将某本书发布/克隆为书模板
+ */
+router.post('/:id/publish-template', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { title } = req.body;
+        if (!title) {
+            return res.status(400).json({ success: false, error: '模板名称不能为空' });
+        }
+        
+        // 校验源书籍所有权
+        const book = await bookService.getBook(id, req.userId);
+        if (!book || book.userId !== req.userId) {
+            return res.status(403).json({ success: false, error: '无权发布此书籍' });
+        }
+
+        const templateId = await bookService.cloneBook(id, req.userId!, title, true);
+        sendSuccess(res, { templateId }, '发布模板成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * POST /api/books/templates/:id/apply
+ * 套用/克隆书模板为用户的新书籍
+ */
+router.post('/templates/:id/apply', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { title } = req.body;
+        if (!title) {
+            return res.status(400).json({ success: false, error: '书籍标题不能为空' });
+        }
+
+        // 校验模板是否可访问
+        const template = await bookService.getBook(id, req.userId);
+        if (!template || template.type !== 'template') {
+            return res.status(404).json({ success: false, error: '模板不存在或无权访问' });
+        }
+
+        const newBookId = await bookService.cloneBook(id, req.userId!, title, false);
+        sendSuccess(res, { bookId: newBookId }, '套用模板成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
  * GET /api/books/public
  * 获取广场书籍列表（公开）
  */

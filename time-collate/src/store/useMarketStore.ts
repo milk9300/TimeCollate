@@ -1,14 +1,19 @@
 import { create } from 'zustand';
 import axios from 'axios';
-import type { Template, BookTheme } from '../types';
+import type { Template, BookTheme, Book, PaginatedResponse } from '../types';
 import { useBookStore } from './index';
+import { getBookService } from '../services/serviceFactory';
+
+const bookService = getBookService();
 
 interface MarketState {
     marketTemplates: Template[];
     marketThemes: BookTheme[];
+    marketBookTemplates: Book[];
     isLoading: boolean;
     error: string | null;
     fetchMarketAssets: () => Promise<void>;
+    fetchMarketBookTemplates: (page?: number, pageSize?: number, category?: string) => Promise<PaginatedResponse<Book>>;
     collectTemplate: (id: string) => Promise<void>;
     uncollectTemplate: (id: string) => Promise<void>;
     collectTheme: (id: string) => Promise<void>;
@@ -21,6 +26,7 @@ interface MarketState {
 export const useMarketStore = create<MarketState>((set) => ({
     marketTemplates: [],
     marketThemes: [],
+    marketBookTemplates: [],
     isLoading: false,
     error: null,
 
@@ -40,6 +46,22 @@ export const useMarketStore = create<MarketState>((set) => ({
         } catch (e) {
             console.error('Failed to fetch market assets:', e);
             set({ isLoading: false, error: '加载市场资产失败' });
+        }
+    },
+
+    fetchMarketBookTemplates: async (page: number = 1, pageSize: number = 20, category?: string) => {
+        set({ isLoading: true, error: null });
+        try {
+            const response = await bookService.getMarketBookTemplates(page, pageSize, category);
+            set({
+                marketBookTemplates: response.items,
+                isLoading: false
+            });
+            return response;
+        } catch (e) {
+            console.error('Failed to fetch market book templates:', e);
+            set({ isLoading: false, error: '加载书模板市场失败' });
+            throw e;
         }
     },
 

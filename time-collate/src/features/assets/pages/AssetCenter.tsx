@@ -26,6 +26,8 @@ import { MainLayout } from '../../common/components/MainLayout';
 import { useAssetStore } from '../../../store/useAssetStore';
 import { buildFolderTree } from '../utils/treeHelper';
 import type { FolderNode } from '../utils/treeHelper';
+import type { MaterialFolder } from '../services/assetService';
+import { getThumbnailUrl } from '../../../utils/cdn';
 
 export function AssetCenter() {
     const {
@@ -51,6 +53,8 @@ export function AssetCenter() {
         uploadMaterials,
         updateMaterial,
         deleteMaterial,
+        batchDeleteMaterials,
+        batchMoveMaterials,
         toggleFavorite,
         fetchStorageQuota,
         setSelectedFolderId,
@@ -77,6 +81,10 @@ export function AssetCenter() {
     const [movingMaterial, setMovingMaterial] = useState<any | null>(null);
     const [activeMaterialMenu, setActiveMaterialMenu] = useState<string | null>(null);
 
+    // Batch Action States
+    const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
+    const [showBatchMoveModal, setShowBatchMoveModal] = useState(false);
+
     // Tags list input for uploads
     const [uploadTags, setUploadTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState('');
@@ -96,6 +104,11 @@ export function AssetCenter() {
         fetchStorageQuota();
     }, []);
 
+    // Clear selection when filters or pages change
+    useEffect(() => {
+        setSelectedMaterialIds([]);
+    }, [selectedFolderId, selectedType, selectedTag, searchQuery, favoriteOnly, currentPage]);
+
     // Close menus on click outside
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -109,6 +122,47 @@ export function AssetCenter() {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Selection Helpers
+    const toggleSelectMaterial = (id: string) => {
+        const mat = materials.find(m => m.id === id);
+        if (!mat || mat.scope === 'system') return; // 不能操作官方素材
+        setSelectedMaterialIds(prev =>
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    };
+
+    const handleSelectAll = () => {
+        const selectablePageIds = materials
+            .filter(m => m.scope !== 'system')
+            .map(m => m.id);
+
+        if (selectablePageIds.length === 0) return;
+
+        const isAllSelectablePageSelected = selectablePageIds.every(id => selectedMaterialIds.includes(id));
+
+        if (isAllSelectablePageSelected) {
+            // Deselect all selectable items of this page
+            setSelectedMaterialIds(prev => prev.filter(id => !selectablePageIds.includes(id)));
+        } else {
+            // Select all selectable items of this page
+            setSelectedMaterialIds(prev => {
+                const union = new Set([...prev, ...selectablePageIds]);
+                return Array.from(union);
+            });
+        }
+    };
+
+    const handleBatchDelete = async () => {
+        if (confirm(`确定要物理删除选中的 ${selectedMaterialIds.length} 个素材吗？云端物理文件也将被永久清除，不可恢复。`)) {
+            try {
+                await batchDeleteMaterials(selectedMaterialIds);
+                setSelectedMaterialIds([]);
+            } catch (err) {
+                alert(err instanceof Error ? err.message : '批量删除失败');
+            }
+        }
+    };
 
     // Format file size
     const formatBytes = (bytes: number, decimals = 2) => {
@@ -385,9 +439,7 @@ export function AssetCenter() {
     const materialTypes = [
         { key: null, label: '全部', icon: Layout },
         { key: 'photo', label: '照片', icon: FileImage },
-        { key: 'sticker', label: '贴纸印章', icon: Smile },
-        { key: 'background', label: '背景图', icon: FileImage },
-        { key: 'font', label: '字体', icon: Type }
+        { key: 'sticker', label: '贴纸印章', icon: Smile }
     ];
 
     return (
@@ -661,17 +713,51 @@ export function AssetCenter() {
                                 {materials.map((m) => {
                                     const isFav = m.is_favorite === 1;
                                     const isMaterialEditing = editingMaterialId === m.id;
+                                    const isSelected = selectedMaterialIds.includes(m.id);
+                                    const canSelect = m.scope !== 'system';
 
                                     return (
                                         <div
                                             key={m.id}
                                             draggable={m.scope !== 'system'}
                                             onDragStart={(e) => e.dataTransfer.setData('materialId', m.id)}
-                                            className="group bg-white rounded-2xl border border-slate-200/50 hover:border-indigo-200/60 p-3 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col relative"
+                                            onClick={(e) => {
+                                                if (selectedMaterialIds.length > 0) {
+                                                    toggleSelectMaterial(m.id);
+                                                }
+                                            }}
+                                            className={`group bg-white rounded-2xl border p-3 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col relative cursor-pointer
+                                                        ${isSelected 
+                                                            ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/10' 
+                                                            : 'border-slate-200/50 hover:border-indigo-200/60'}`}
                                         >
+                                            {/* Selection Checkbox */}
+                                            {canSelect && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleSelectMaterial(m.id);
+                                                    }}
+                                                    className={`absolute top-2.5 left-2.5 w-6 h-6 rounded-full flex items-center justify-center border transition-all z-20 shadow-xs cursor-pointer
+                                                                ${isSelected
+                                                                    ? 'bg-indigo-600 border-indigo-600 text-white opacity-100'
+                                                                    : `bg-white/95 border-slate-200 hover:border-slate-350 text-slate-300 hover:text-slate-450
+                                                                       ${selectedMaterialIds.length > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}`}
+                                                >
+                                                    <Check size={11} strokeWidth={3} className={isSelected ? 'block' : 'opacity-0 hover:opacity-100 transition-opacity'} />
+                                                </button>
+                                            )}
+
                                             {/* Preview Container */}
                                             <div
-                                                onClick={() => setPreviewMaterial(m)}
+                                                onClick={(e) => {
+                                                    if (selectedMaterialIds.length > 0) {
+                                                        e.stopPropagation();
+                                                        toggleSelectMaterial(m.id);
+                                                    } else {
+                                                        setPreviewMaterial(m);
+                                                    }
+                                                }}
                                                 className="aspect-square bg-slate-50 hover:bg-slate-100/30 rounded-xl overflow-hidden flex items-center justify-center relative cursor-zoom-in group/preview mb-2.5"
                                             >
                                                 {/* Sticker SVGs */}
@@ -682,7 +768,7 @@ export function AssetCenter() {
                                                     />
                                                 ) : (
                                                     <img
-                                                        src={m.file_url}
+                                                        src={getThumbnailUrl(m.file_url, 300)}
                                                         alt={m.name}
                                                         loading="lazy"
                                                         className="w-full h-full object-contain p-1.5 transition-transform duration-300 group-hover/preview:scale-105"
@@ -735,32 +821,34 @@ export function AssetCenter() {
                                             </div>
 
                                             {/* Favorite Heart & Options button Overlay */}
-                                            <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {/* Favorite Toggle */}
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        toggleFavorite(m.id);
-                                                    }}
-                                                    className={`w-6 h-6 rounded-lg bg-white/95 border border-slate-100 flex items-center justify-center transition-all shadow-xs cursor-pointer hover:scale-105 active:scale-95
-                                                                ${isFav ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'}`}
-                                                >
-                                                    <Heart size={11} className={isFav ? 'fill-rose-500' : ''} />
-                                                </button>
-
-                                                {/* Actions menu (for owned user assets) */}
-                                                {m.scope !== 'system' && (
+                                            {selectedMaterialIds.length === 0 && (
+                                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {/* Favorite Toggle */}
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            setActiveMaterialMenu(activeMaterialMenu === m.id ? null : m.id);
+                                                            toggleFavorite(m.id);
                                                         }}
-                                                        className="w-6 h-6 rounded-lg bg-white/95 border border-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-all shadow-xs cursor-pointer"
+                                                        className={`w-6 h-6 rounded-lg bg-white/95 border border-slate-100 flex items-center justify-center transition-all shadow-xs cursor-pointer hover:scale-105 active:scale-95
+                                                                    ${isFav ? 'text-rose-500' : 'text-slate-400 hover:text-rose-500'}`}
                                                     >
-                                                        <MoreVertical size={11} />
+                                                        <Heart size={11} className={isFav ? 'fill-rose-500' : ''} />
                                                     </button>
-                                                )}
-                                            </div>
+
+                                                    {/* Actions menu (for owned user assets) */}
+                                                    {m.scope !== 'system' && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActiveMaterialMenu(activeMaterialMenu === m.id ? null : m.id);
+                                                            }}
+                                                            className="w-6 h-6 rounded-lg bg-white/95 border border-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-all shadow-xs cursor-pointer"
+                                                        >
+                                                            <MoreVertical size={11} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
 
                                             {/* Actions Dropdown for Material */}
                                             {activeMaterialMenu === m.id && (
@@ -855,7 +943,7 @@ export function AssetCenter() {
                                 />
                             ) : (
                                 <img
-                                    src={previewMaterial.file_url}
+                                    src={getThumbnailUrl(previewMaterial.file_url, 800)}
                                     alt={previewMaterial.name}
                                     className="max-w-full max-h-full object-contain"
                                 />
@@ -972,6 +1060,123 @@ export function AssetCenter() {
                         <div className="flex justify-end gap-2">
                             <button
                                 onClick={() => setMovingMaterial(null)}
+                                className="px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-500 hover:bg-slate-50 transition-all cursor-pointer"
+                            >
+                                取消
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Batch Action Floating Bar */}
+            {selectedMaterialIds.length > 0 && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 bg-white/90 backdrop-blur-md shadow-2xl border border-slate-200/80 px-6 py-3.5 rounded-[22px] flex items-center justify-between gap-8 animate-in fade-in slide-in-from-bottom-5 duration-300 min-w-[340px] max-w-[90%] md:max-w-2xl">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setSelectedMaterialIds([])}
+                            className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-650 flex items-center justify-center transition-colors cursor-pointer"
+                            title="取消选择"
+                        >
+                            <X size={15} />
+                        </button>
+                        <div className="h-4 w-[1px] bg-slate-200" />
+                        <span className="text-[12px] font-black text-slate-700">
+                            已选中 <span className="text-indigo-650 font-black">{selectedMaterialIds.length}</span> 个素材
+                        </span>
+                        <button
+                            onClick={handleSelectAll}
+                            className="text-[10px] font-black text-indigo-650 hover:text-indigo-750 transition-colors underline decoration-2 cursor-pointer ml-1"
+                        >
+                            {materials.filter(m => m.scope !== 'system').every(m => selectedMaterialIds.includes(m.id))
+                                ? '取消全选'
+                                : '全选本页'}
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowBatchMoveModal(true)}
+                            className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-200 hover:border-indigo-200/60 bg-white hover:bg-indigo-50/20 text-slate-650 hover:text-indigo-650 rounded-xl text-[11px] font-black transition-all cursor-pointer shadow-xs"
+                        >
+                            <FolderOpen size={12} />
+                            <span>批量移动</span>
+                        </button>
+                        <button
+                            onClick={handleBatchDelete}
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-black transition-all cursor-pointer shadow-md shadow-rose-600/10 active:scale-[0.98]"
+                        >
+                            <Trash2 size={12} />
+                            <span>批量删除</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Folder Picker Modal for Batch Moving Materials */}
+            {showBatchMoveModal && (
+                <div
+                    className="fixed inset-0 bg-slate-900/65 backdrop-blur-[6px] z-50 flex items-center justify-center p-4 animate-in fade-in duration-350 select-none"
+                    onClick={() => setShowBatchMoveModal(false)}
+                >
+                    <div
+                        className="bg-white rounded-[28px] max-w-sm w-full border border-slate-100 p-6 shadow-2xl animate-in zoom-in-95 duration-300"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-black text-slate-800">批量移动素材</h3>
+                            <button
+                                onClick={() => setShowBatchMoveModal(false)}
+                                className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-slate-50 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                        
+                        <p className="text-xs text-slate-400 font-bold mb-4 leading-normal">
+                            请选择要将选中的 <span className="text-slate-700 font-black">{selectedMaterialIds.length}</span> 个素材移动到的目标文件夹：
+                        </p>
+
+                        {/* Flat list of folders for selection */}
+                        <div className="max-h-60 overflow-y-auto custom-scrollbar border border-slate-100 rounded-xl p-1 mb-6 space-y-0.5">
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await batchMoveMaterials(selectedMaterialIds, null);
+                                        setSelectedMaterialIds([]);
+                                        setShowBatchMoveModal(false);
+                                    } catch (err) {
+                                        alert(err instanceof Error ? err.message : '批量移动失败');
+                                    }
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-bold hover:bg-slate-50 text-slate-600 rounded-lg cursor-pointer"
+                            >
+                                <FolderOpen size={14} className="text-slate-400" />
+                                <span>根目录</span>
+                            </button>
+                            {folders.filter(f => f.scope !== 'system').map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={async () => {
+                                        try {
+                                            await batchMoveMaterials(selectedMaterialIds, f.id);
+                                            setSelectedMaterialIds([]);
+                                            setShowBatchMoveModal(false);
+                                        } catch (err) {
+                                            alert(err instanceof Error ? err.message : '批量移动失败');
+                                        }
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-bold hover:bg-slate-50 text-slate-600 rounded-lg cursor-pointer"
+                                >
+                                    <Folder size={14} className="text-slate-400" />
+                                    <span>{f.name}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowBatchMoveModal(false)}
                                 className="px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-500 hover:bg-slate-50 transition-all cursor-pointer"
                             >
                                 取消

@@ -38,6 +38,8 @@ interface AssetState {
     uploadMaterials: (files: File[], folderId: string | null, type: string, tags?: string[]) => Promise<void>;
     updateMaterial: (id: string, name?: string, folderId?: string | null) => Promise<void>;
     deleteMaterial: (id: string) => Promise<void>;
+    batchDeleteMaterials: (ids: string[]) => Promise<void>;
+    batchMoveMaterials: (ids: string[], folderId: string | null) => Promise<void>;
     toggleFavorite: (id: string) => Promise<void>;
     fetchStorageQuota: () => Promise<void>;
     loadAssetCache: () => Promise<void>;
@@ -271,6 +273,29 @@ export const useAssetStore = create<AssetState>()((set, get) => ({
             get().fetchStorageQuota();
         } catch (error: any) {
             set({ error: error.message || 'Failed to delete material' });
+        }
+    },
+
+    batchDeleteMaterials: async (ids) => {
+        try {
+            await assetService.batchDeleteMaterials(ids);
+            get().fetchMaterials(get().currentPage);
+            get().fetchStorageQuota();
+        } catch (error: any) {
+            const msg = error.response?.data?.error || error.message || 'Failed to delete materials';
+            set({ error: msg });
+            throw new Error(msg);
+        }
+    },
+
+    batchMoveMaterials: async (ids, folderId) => {
+        try {
+            await assetService.batchMoveMaterials(ids, folderId);
+            get().fetchMaterials(get().currentPage);
+        } catch (error: any) {
+            const msg = error.response?.data?.error || error.message || 'Failed to move materials';
+            set({ error: msg });
+            throw new Error(msg);
         }
     },
 

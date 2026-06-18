@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Book as BookIcon, Loader2, Download, Trash2, ExternalLink, Image as ImageIcon, Send, Undo2, Film, Share2 } from 'lucide-react';
+import { FileText, Book as BookIcon, Loader2, Download, Trash2, ExternalLink, Image as ImageIcon, Send, Undo2, Film, Share2, Bookmark } from 'lucide-react';
 import { getBookService } from '../../../services/serviceFactory';
 import { useAuthStore } from '../../../store/useAuthStore';
 
@@ -16,6 +16,7 @@ interface BookContextMenuProps {
     isFavorite?: boolean;
     onUnfavorite?: () => void;
     onShare?: () => void;
+    onPublishTemplate?: () => void;
 }
 
 /**
@@ -34,7 +35,8 @@ export const BookContextMenu: React.FC<BookContextMenuProps> = ({
     onExportTriggered,
     isFavorite = false,
     onUnfavorite,
-    onShare
+    onShare,
+    onPublishTemplate
 }) => {
     const [isExporting, setIsExporting] = useState<string | null>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -200,6 +202,20 @@ export const BookContextMenu: React.FC<BookContextMenuProps> = ({
                 >
                     <Share2 size={14} />
                     发布分享
+                </button>
+            )}
+
+            {onPublishTemplate && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onPublishTemplate();
+                        onClose();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-[#3B82F6] hover:text-white transition-colors text-left cursor-pointer"
+                >
+                    <Bookmark size={14} />
+                    发布为模板
                 </button>
             )}
 

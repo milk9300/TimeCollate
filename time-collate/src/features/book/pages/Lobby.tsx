@@ -73,6 +73,15 @@ export function Lobby() {
     const [favoritedBooks, setFavoritedBooks] = useState<Book[]>([]);
     const [isFavLoading, setIsFavLoading] = useState(false);
 
+    // 发布为模板状态
+    const [publishTemplateModal, setPublishTemplateModal] = useState<{
+        isOpen: boolean;
+        bookId: string;
+        bookTitle: string;
+        templateTitle: string;
+    }>({ isOpen: false, bookId: '', bookTitle: '', templateTitle: '' });
+    const [isPublishingTemplate, setIsPublishingTemplate] = useState(false);
+
     // 加载书籍列表与收藏列表
     useEffect(() => {
         loadBooks(1);
@@ -283,6 +292,36 @@ export function Lobby() {
             alert('生成分享链接失败，请稍后再试');
         } finally {
             setIsGeneratingShare(false);
+        }
+    };
+
+    const handlePublishTemplateTrigger = (bookId: string) => {
+        const book = books.find(b => b.id === bookId);
+        if (book) {
+            setPublishTemplateModal({
+                isOpen: true,
+                bookId,
+                bookTitle: book.title,
+                templateTitle: book.title
+            });
+        }
+    };
+
+    const handleConfirmPublishTemplate = async () => {
+        if (!publishTemplateModal.templateTitle.trim()) {
+            alert('请输入模板名称');
+            return;
+        }
+        setIsPublishingTemplate(true);
+        try {
+            await bookService.publishTemplate(publishTemplateModal.bookId, publishTemplateModal.templateTitle);
+            alert('发布模板成功！您可以在“我的书模板”中查看和套用。');
+            setPublishTemplateModal({ isOpen: false, bookId: '', bookTitle: '', templateTitle: '' });
+        } catch (error) {
+            console.error('Failed to publish template:', error);
+            alert('发布模板失败，请稍后重试');
+        } finally {
+            setIsPublishingTemplate(false);
         }
     };
 
@@ -568,6 +607,7 @@ export function Lobby() {
                     }}
                     isFavorite={contextMenu.isFavorite}
                     onUnfavorite={() => handleToggleFavorite(contextMenu.bookId)}
+                    onPublishTemplate={contextMenu.isFavorite ? undefined : () => handlePublishTemplateTrigger(contextMenu.bookId)}
                 />
             )}
 
@@ -626,6 +666,50 @@ export function Lobby() {
                 shareUrl={shareUrl}
                 bookTitle={shareBookTitle}
             />
+
+            {/* 发布为模板弹窗 */}
+            {publishTemplateModal.isOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl p-8 flex flex-col gap-6 font-['Outfit',_sans-serif]">
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800">发布为整书模板</h3>
+                            <p className="text-slate-400 text-xs font-semibold mt-1.5">
+                                发布模板后，您可以在“我的书模板”中找到它，也可以一键克隆套用生成新书籍。
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[13px] font-black text-slate-500">模板名称</label>
+                            <input
+                                type="text"
+                                placeholder="输入模板名称..."
+                                value={publishTemplateModal.templateTitle}
+                                onChange={(e) => setPublishTemplateModal(prev => ({ ...prev, templateTitle: e.target.value }))}
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-[14px] text-slate-700
+                                         focus:outline-none focus:bg-white focus:border-indigo-500 transition-all duration-300 font-bold"
+                            />
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button
+                                disabled={isPublishingTemplate}
+                                onClick={() => setPublishTemplateModal(prev => ({ ...prev, isOpen: false }))}
+                                className="px-6 py-3 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-2xl font-bold text-[14px] transition-colors cursor-pointer"
+                            >
+                                取消
+                            </button>
+                            <button
+                                disabled={isPublishingTemplate}
+                                onClick={handleConfirmPublishTemplate}
+                                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-[14px] shadow-lg shadow-indigo-100 transition-all flex items-center gap-2 cursor-pointer"
+                            >
+                                {isPublishingTemplate && <Loader2 className="animate-spin" size={16} />}
+                                确认发布
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </MainLayout>
     );
 }

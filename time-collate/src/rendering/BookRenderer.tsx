@@ -10,6 +10,7 @@ import {
     getPageDecorations, 
     getPageBackgroundImage,
     updatePageDecorations, 
+    updatePageBackgroundImage,
     parsePageContent,
     type Decoration 
 } from '../utils/textSlotHelper';
@@ -444,7 +445,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                     const cachedAsset = assetCache[stickerId];
                     if (!asset && !cachedAsset) return;
                     
-                    let decorationType = 'sticker';
+                    let decorationType: 'date' | 'sticker' | 'tape' | 'stamp' | 'botanical' = 'sticker';
                     let size = 28;
                     if (asset) {
                         decorationType = asset.category === 'stamps' ? 'stamp' : 'sticker';

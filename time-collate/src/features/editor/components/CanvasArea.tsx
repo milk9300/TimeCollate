@@ -272,7 +272,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
                                                 const pageIndex = activeChapter?.pages.findIndex(p => p.id === activePageId) ?? 0;
                                                 return pageIndex % 2 === 0 ? 'left' : 'right';
                                             })()}
-                                            readOnly={isLivePreview || editorMode === 'hand'}
+                                            readOnly={isLivePreview}
                                         />
                                         <div className="absolute top-4 left-4 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full z-20 pointer-events-none">
                                             第 {(() => {

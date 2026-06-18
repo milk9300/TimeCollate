@@ -185,4 +185,36 @@ export class LocalBookService implements IBookService {
             totalPages: 0
         };
     }
+
+    async getBookTemplates(page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<Book>> {
+        await this.delay();
+        return {
+            items: [],
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0
+        };
+    }
+
+    async getMarketBookTemplates(page: number = 1, pageSize: number = 20, _category?: string): Promise<PaginatedResponse<Book>> {
+        await this.delay();
+        return {
+            items: [],
+            total: 0,
+            page,
+            pageSize,
+            totalPages: 0
+        };
+    }
+
+    async publishTemplate(_bookId: string, _title: string): Promise<string> {
+        await this.delay();
+        return 'mock-template-id';
+    }
+
+    async applyTemplate(_templateId: string, _title: string): Promise<string> {
+        await this.delay();
+        return 'mock-book-id';
+    }
 }

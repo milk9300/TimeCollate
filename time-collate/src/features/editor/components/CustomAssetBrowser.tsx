@@ -190,7 +190,7 @@ export const CustomAssetBrowser: React.FC<CustomAssetBrowserProps> = ({
     return (
         <div className="flex flex-col min-h-0 flex-1 space-y-3">
             {/* 素材类型快速切换 */}
-            <div className="grid grid-cols-4 gap-1 p-0.5 bg-gray-100 rounded-lg flex-shrink-0">
+            <div className="grid grid-cols-2 gap-1 p-0.5 bg-gray-100 rounded-lg flex-shrink-0">
                 <button
                     onClick={() => setSelectedType('photo')}
                     className={`flex flex-col items-center justify-center py-1.5 rounded-md transition-all ${selectedType === 'photo' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-900'}`}
@@ -206,22 +206,6 @@ export const CustomAssetBrowser: React.FC<CustomAssetBrowserProps> = ({
                 >
                     <Smile size={14} />
                     <span className="text-[9px] mt-0.5">贴纸</span>
-                </button>
-                <button
-                    onClick={() => setSelectedType('background')}
-                    className={`flex flex-col items-center justify-center py-1.5 rounded-md transition-all ${selectedType === 'background' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-900'}`}
-                    title="页面背景"
-                >
-                    <Layers size={14} />
-                    <span className="text-[9px] mt-0.5">背景</span>
-                </button>
-                <button
-                    onClick={() => setSelectedType('font')}
-                    className={`flex flex-col items-center justify-center py-1.5 rounded-md transition-all ${selectedType === 'font' ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-900'}`}
-                    title="文字字体"
-                >
-                    <Type size={14} />
-                    <span className="text-[9px] mt-0.5">字体</span>
                 </button>
             </div>
 
@@ -377,7 +361,7 @@ export const CustomAssetBrowser: React.FC<CustomAssetBrowserProps> = ({
                                             {isSVG ? (
                                                 <div 
                                                     className="w-full h-full flex items-center justify-center text-gray-800 dynamic-svg-sticker"
-                                                    dangerouslySetInnerHTML={{ __html: mat.metadata.svg }}
+                                                    dangerouslySetInnerHTML={{ __html: mat.metadata?.svg ?? '' }}
                                                 />
                                             ) : (
                                                 <img

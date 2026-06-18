@@ -148,11 +148,10 @@ export class AdminService {
 
         // 平均单本图片上传张数
         const [avgPhotosRows] = await pool.query<RowDataPacket[]>(`
-            SELECT COUNT(*) / NULLIF((SELECT COUNT(*) FROM books WHERE deleted_at IS NULL), 0) as avg_photos
-            FROM photos ph 
-            JOIN pages p ON ph.page_id = p.id 
+            SELECT SUM(COALESCE(JSON_LENGTH(p.elements->'$.photos'), 0)) / NULLIF((SELECT COUNT(*) FROM books WHERE deleted_at IS NULL), 0) as avg_photos
+            FROM pages p 
             JOIN books b ON p.book_id = b.id 
-            WHERE b.deleted_at IS NULL AND ph.url IS NOT NULL AND ph.url != ''
+            WHERE b.deleted_at IS NULL
         `);
         const avgPhotosPerBook = avgPhotosRows[0].avg_photos ? parseFloat(Number(avgPhotosRows[0].avg_photos).toFixed(1)) : 0;
 
@@ -360,7 +359,7 @@ export class AdminService {
                 COALESCE(sf.metric_value, 0) as favorites,
                 (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id AND p.is_chapter_start = 1) as chapter_count,
                 (SELECT COUNT(*) FROM pages p WHERE p.book_id = b.id) as page_count,
-                (SELECT COUNT(*) FROM photos ph JOIN pages p ON ph.page_id = p.id WHERE p.book_id = b.id AND ph.url IS NOT NULL AND ph.url != '') as photo_count
+                (SELECT SUM(COALESCE(JSON_LENGTH(p.elements->'$.photos'), 0)) FROM pages p WHERE p.book_id = b.id) as photo_count
              FROM books b
              LEFT JOIN users u ON b.user_id = u.id
              LEFT JOIN entity_statistics sv ON b.id = sv.entity_id AND sv.entity_type = 'book' AND sv.metric_type = 'view'

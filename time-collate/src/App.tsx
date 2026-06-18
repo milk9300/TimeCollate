@@ -16,6 +16,8 @@ const Profile = lazy(() => import('./features/profile/pages/Profile').then(m => 
 const Square = lazy(() => import('./features/book/pages/Square').then(m => ({ default: m.Square })));
 const Reader = lazy(() => import('./features/editor/pages/Reader').then(m => ({ default: m.Reader })));
 const Market = lazy(() => import('./features/book/pages/Market').then(m => ({ default: m.Market })));
+const BookMarket = lazy(() => import('./features/book/pages/BookMarket').then(m => ({ default: m.BookMarket })));
+const MyBookTemplates = lazy(() => import('./features/book/pages/MyBookTemplates').then(m => ({ default: m.MyBookTemplates })));
 const AssetCenter = lazy(() => import('./features/assets/pages/AssetCenter').then(m => ({ default: m.AssetCenter })));
 
 // 管理员页面懒加载
@@ -104,7 +106,9 @@ function App() {
           <Route path="/read/:bookId" element={<AuthGuard><Reader /></AuthGuard>} />
           <Route path="/trash" element={<AuthGuard><Trash /></AuthGuard>} />
           <Route path="/profile/:userId?" element={<AuthGuard><Profile /></AuthGuard>} />
-          <Route path="/market" element={<AuthGuard><Market /></AuthGuard>} />
+          <Route path="/market/books" element={<AuthGuard><BookMarket /></AuthGuard>} />
+          <Route path="/market/layouts" element={<AuthGuard><Market /></AuthGuard>} />
+          <Route path="/my/book-templates" element={<AuthGuard><MyBookTemplates /></AuthGuard>} />
           <Route path="/my/layouts" element={<AuthGuard><MyLayouts /></AuthGuard>} />
           <Route path="/my/assets" element={<AuthGuard><AssetCenter /></AuthGuard>} />
           <Route path="/builder" element={<AuthGuard><AdminBuilder /></AuthGuard>} />

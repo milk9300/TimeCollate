@@ -14,6 +14,7 @@ export interface Photo {
     scale?: number;
     xOffset?: number;
     yOffset?: number;
+    assetId?: string;
 }
 
 export interface Page {
@@ -55,6 +56,7 @@ export interface Book {
     userId: string;
     title: string;
     author: string;
+    type?: 'book' | 'template';
     createdAt: number;
     pages: Page[];
     theme: ThemeType;

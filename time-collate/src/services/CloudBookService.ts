@@ -161,6 +161,30 @@ export class CloudBookService implements IBookService {
         });
         return response.data.data;
     }
+
+    async getBookTemplates(page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<Book>> {
+        const response = await this.api.get('/books/templates', {
+            params: { page, pageSize }
+        });
+        return response.data.data;
+    }
+
+    async getMarketBookTemplates(page: number = 1, pageSize: number = 20, category?: string): Promise<PaginatedResponse<Book>> {
+        const response = await this.api.get('/books/templates/market', {
+            params: { page, pageSize, category }
+        });
+        return response.data.data;
+    }
+
+    async publishTemplate(bookId: string, title: string): Promise<string> {
+        const response = await this.api.post(`/books/${bookId}/publish-template`, { title });
+        return response.data.data.templateId;
+    }
+
+    async applyTemplate(templateId: string, title: string): Promise<string> {
+        const response = await this.api.post(`/books/templates/${templateId}/apply`, { title });
+        return response.data.data.bookId;
+    }
 }
 
 export const cloudBookService = new CloudBookService(import.meta.env.VITE_API_BASE_URL || '/api');

@@ -233,14 +233,45 @@ async function sanitizeDatabaseUrls() {
             console.log(`🧹 Cleared ${coverResult.affectedRows} temporary cover URLs in books table`);
         }
 
-        // 3. 清理页面图片
-        const [photoResult] = await pool.query<any>(
-            `UPDATE photos 
-             SET url = '' 
-             WHERE url LIKE 'blob:%' OR url LIKE 'data:image/%'`
+        // 3. 清理页面中的临时 URL
+        const [pagesWithDirtyUrls] = await pool.query<any>(
+            "SELECT id, elements FROM pages WHERE elements LIKE '%blob:%' OR elements LIKE '%data:%'"
         );
-        if (photoResult.affectedRows > 0) {
-            console.log(`🧹 Cleared ${photoResult.affectedRows} temporary photo URLs in photos table`);
+        let cleanedPagesCount = 0;
+        for (const page of pagesWithDirtyUrls) {
+            if (page.elements) {
+                try {
+                    const elements = typeof page.elements === 'string' ? JSON.parse(page.elements) : page.elements;
+                    let modified = false;
+
+                    if (Array.isArray(elements.photos)) {
+                        for (const photo of elements.photos) {
+                            if (photo.url && (photo.url.startsWith('blob:') || photo.url.startsWith('data:'))) {
+                                photo.url = '';
+                                modified = true;
+                            }
+                        }
+                    }
+
+                    if (elements.backgroundImage && (elements.backgroundImage.startsWith('blob:') || elements.backgroundImage.startsWith('data:'))) {
+                        elements.backgroundImage = null;
+                        modified = true;
+                    }
+
+                    if (modified) {
+                        await pool.query(
+                            'UPDATE pages SET elements = ? WHERE id = ?',
+                            [JSON.stringify(elements), page.id]
+                        );
+                        cleanedPagesCount++;
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+        }
+        if (cleanedPagesCount > 0) {
+            console.log(`静态 URL 清洗：已清洗 ${cleanedPagesCount} 个页面中的临时 URL。`);
         }
 
         console.log('✅ Database URL sanitization check completed.');

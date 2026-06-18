@@ -94,6 +94,7 @@ export interface Book {
   userId: string;
   title: string;
   author: string;
+  type?: 'book' | 'template';
   createdAt: number;
   pages: Page[];
   theme: string; // 改为 string 以支持内置主题 and 动态主题 ID
