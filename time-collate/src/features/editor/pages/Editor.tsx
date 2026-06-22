@@ -8,7 +8,9 @@ import { FlipBook } from '../../../rendering/FlipBook';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
 import { ExportProgressModal } from '../../common/components/ExportProgressModal';
 import { CanvasArea } from '../components/CanvasArea';
-import { SidebarProperty } from '../components/SidebarProperty';
+import { TopContextualToolbar } from '../components/TopContextualToolbar';
+import { RightEditorDock } from '../components/RightEditorDock';
+import { RightEditorDrawer } from '../components/RightEditorDrawer';
 import { UploadProgressBar } from '../components/UploadProgressBar';
 import { MobilePromo } from '../components/MobilePromo';
 import { DEFAULT_ZOOM } from '../components/ZoomableCanvas';
@@ -21,6 +23,7 @@ import {
 } from 'lucide-react';
 import { parseCoverUrl } from '../components/GeneratedCover';
 import { getBookService } from '../../../services/serviceFactory';
+import { TemplateEditor } from './TemplateEditor';
 
 const bookService = getBookService();
 
@@ -28,8 +31,12 @@ const bookService = getBookService();
  * @description 完全体 Canvas WYSIWYG 编辑器页面 (已解耦组件树并实现切片订阅，以保证 60 FPS 体验)
  */
 export function Editor() {
-    const { bookId } = useParams<{ bookId: string }>();
+    const { bookId, templateId } = useParams<{ bookId: string; templateId: string }>();
     const navigate = useNavigate();
+
+    if (templateId) {
+        return <TemplateEditor templateId={templateId} />;
+    }
 
     // 1. Zustand Store 切片状态与操作，防止不必要的多余重渲染
     const currentBook = useBookStore(state => state.currentBook);
@@ -38,6 +45,10 @@ export function Editor() {
     const updateBookSettings = useBookStore(state => state.updateBookSettings);
     const editorMode = useBookStore(state => state.editorMode);
     const setEditorMode = useBookStore(state => state.setEditorMode);
+    const editorScope = useBookStore(state => state.editorScope);
+    const setEditorScope = useBookStore(state => state.setEditorScope);
+    const activeFrontPage = useBookStore(state => state.activeFrontPage);
+    const setActiveFrontPage = useBookStore(state => state.setActiveFrontPage);
     const setActivePhotoEdit = useBookStore(state => state.setActivePhotoEdit);
     const loadAssetCache = useAssetStore(state => state.loadAssetCache);
     const setActiveTextEdit = useBookStore(state => state.setActiveTextEdit);
@@ -61,13 +72,13 @@ export function Editor() {
     // 3. 编辑器 UI 本地交互状态
     const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
     const [activePageId, setActivePageId] = useState<string | null>(null);
-    const [isEditingCover, setIsEditingCover] = useState(true); // 默认进入封面编辑
-    const [isEditingPreface, setIsEditingPreface] = useState(false);
-    const [isDrawerOpen, setIsDrawerOpen] = useState(true);
-    const [showGridOverlay, setShowGridOverlay] = useState(false);
+    const isDrawerOpen = useBookStore(state => state.isDrawerOpen);
+    const setIsDrawerOpen = useBookStore(state => state.setIsDrawerOpen);
+    const rightActiveTab = useBookStore(state => state.rightActiveTab);
+    const setRightActiveTab = useBookStore(state => state.setRightActiveTab);
     const isLivePreview = editorMode === 'hand';
 
-    const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
+    const isFullscreenPreview = false;
     const [isReadMode, setIsReadMode] = useState(false);
     const [showEmptyContentModal, setShowEmptyContentModal] = useState(false);
     const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -110,7 +121,7 @@ export function Editor() {
     // 6. 初始化状态，确保 activeChapterId 和 activePageId 的连贯性
     useEffect(() => {
         if (currentBook) {
-            if (isEditingCover || isEditingPreface) {
+            if (editorScope === 'cover') {
                 setActiveChapterId(null);
                 setActivePageId(null);
             } else if (!activeChapterId && chapters.length > 0) {
@@ -120,7 +131,7 @@ export function Editor() {
                 }
             }
         }
-    }, [isEditingCover, isEditingPreface, currentBook, chapters]);
+    }, [editorScope, currentBook, chapters]);
 
     // 当章节变化时，自动选择其第一个页面
     useEffect(() => {
@@ -135,12 +146,9 @@ export function Editor() {
         }
     }, [activeChapterId, chapters]);
 
-    // 当选中的编辑照片或文本槽位变化时，自动切换侧边栏并确保抽屉打开
-    useEffect(() => {
-        if (activePhotoEdit || activeTextEdit) {
-            setIsDrawerOpen(true);
-        }
-    }, [activePhotoEdit, activeTextEdit]);
+    // Legacy activePhotoEdit hook removed to respect new Canva inspector workflow
+
+    // 当视图切换到「书封」时，不主动开启侧边栏，由用户触发（点击右侧 dock 选项卡）
 
     const isSpacePressed = useRef(false);
 
@@ -164,26 +172,13 @@ export function Editor() {
         };
     }, []);
 
-    // 监听编辑模式变化：浏览模式（hand）下自动折叠侧边栏；编辑模式（select）下自动展开
+    // 监听编辑模式变化：浏览模式（hand）下自动折叠侧边栏，避免遮挡画布预览；编辑模式下由用户手动开启侧边栏
     useEffect(() => {
         if (isSpacePressed.current) return;
         if (editorMode === 'hand') {
             setIsDrawerOpen(false);
-        } else if (editorMode === 'select') {
-            setIsDrawerOpen(true);
         }
     }, [editorMode]);
-
-    // ESC 键退出全屏预览
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isFullscreenPreview) {
-                setIsFullscreenPreview(false);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isFullscreenPreview]);
 
     // 快捷键绑定 (V: 选择, H: 拖拽, Ctrl+Z: 撤销, Ctrl+Y: 重做)
     useEffect(() => {
@@ -227,29 +222,28 @@ export function Editor() {
 
     // 导航回调
     const handleSelectChapter = useCallback((chapterId: string) => {
-        setIsEditingCover(false);
-        setIsEditingPreface(false);
+        setEditorScope('chapters');
         setActiveChapterId(chapterId);
         setActivePhotoEdit(null);
-    }, [setActivePhotoEdit]);
+    }, [setActivePhotoEdit, setEditorScope]);
 
     const handleSelectCover = useCallback(() => {
-        setIsEditingCover(true);
-        setIsEditingPreface(false);
+        setEditorScope('cover');
+        setActiveFrontPage('cover');
         setActiveChapterId(null);
         setActivePageId(null);
         setActivePhotoEdit(null);
-    }, [setActivePhotoEdit]);
+    }, [setActivePhotoEdit, setEditorScope, setActiveFrontPage]);
 
     const handleSelectPreface = useCallback(() => {
-        setIsEditingCover(false);
-        setIsEditingPreface(true);
+        setEditorScope('cover');
+        setActiveFrontPage('preface');
         setActiveChapterId(null);
         setActivePageId(null);
         setActivePhotoEdit(null);
-    }, [setActivePhotoEdit]);
+    }, [setActivePhotoEdit, setEditorScope, setActiveFrontPage]);
 
-    const handleBack = useCallback(() => navigate('/'), [navigate]);
+    const handleBack = useCallback(() => navigate('/workbench'), [navigate]);
 
     // 解锁发布书籍
     const handleUnlock = async () => {
@@ -283,7 +277,7 @@ export function Editor() {
                     onClick={handleBack}
                     className="px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-all cursor-pointer font-semibold"
                 >
-                    返回大厅
+                    返回工作台
                 </button>
             </div>
         );
@@ -291,7 +285,7 @@ export function Editor() {
 
     return (
         <ThemeProvider theme={currentBook.theme || 'classic'}>
-            <div className="flex h-screen w-full overflow-hidden bg-[#F6F6F8] text-gray-900 font-sans select-none flex-col">
+            <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900 font-sans select-none flex-col">
 
                 {/* 0. TopBar Header */}
                 {!isFullscreenPreview && (
@@ -300,12 +294,36 @@ export function Editor() {
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={handleBack}
-                                className="text-xs font-bold text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-1 cursor-pointer"
+                                className="text-xs font-bold text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-1 cursor-pointer flex-shrink-0"
                             >
-                                ← 返回大厅
+                                ← 返回工作台
                             </button>
                             <div className="h-4 w-px bg-gray-200" />
-                            
+
+                            {/* View Mode Selector Tab */}
+                            <div className="flex bg-slate-100 p-0.5 rounded-full border border-slate-200/50 shadow-inner shrink-0 select-none">
+                                <button
+                                    onClick={() => setEditorScope('cover')}
+                                    className={`px-3.5 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${editorScope === 'cover'
+                                            ? 'bg-white text-indigo-655 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                >
+                                    书封
+                                </button>
+                                <button
+                                    onClick={() => setEditorScope('chapters')}
+                                    className={`px-3.5 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${editorScope === 'chapters'
+                                            ? 'bg-white text-indigo-655 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                >
+                                    内容
+                                </button>
+                            </div>
+
+                            <div className="h-4 w-px bg-gray-200" />
+
                             {/* Cloud Sync Status Indicator Lamp */}
                             {saveStatus === 'saved' && (
                                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
@@ -355,11 +373,10 @@ export function Editor() {
                             {/* Live Preview Toggle */}
                             <button
                                 onClick={() => setEditorMode(editorMode === 'hand' ? 'select' : 'hand')}
-                                className={`border px-3.5 py-1.5 rounded-full transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm ${
-                                    isLivePreview
+                                className={`border px-3.5 py-1.5 rounded-full transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm ${isLivePreview
                                         ? 'bg-emerald-50 border-emerald-250 text-emerald-700 hover:bg-emerald-100/50'
                                         : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 hover:text-indigo-600'
-                                }`}
+                                    }`}
                             >
                                 <div className={`w-2 h-2 rounded-full ${isLivePreview ? 'bg-emerald-500 animate-ping' : 'bg-gray-400'}`} />
                                 <span>{isLivePreview ? '无干扰预览：开' : '实时预览'}</span>
@@ -388,58 +405,61 @@ export function Editor() {
                 <div className="flex-1 flex w-full overflow-hidden relative">
 
                     {/* Column 1: LeftSpreadNavigator */}
-                    {!isFullscreenPreview && (
+                    {!isFullscreenPreview && editorScope !== 'cover' && (
                         <SpreadNavigator
                             activeChapterId={activeChapterId}
                             activePageId={activePageId}
-                            isEditingCover={isEditingCover}
-                            isEditingPreface={isEditingPreface}
                             onSelectChapter={handleSelectChapter}
                             onSelectPage={(chapterId, pageId) => {
-                                setIsEditingCover(false);
-                                setIsEditingPreface(false);
+                                setEditorScope('chapters');
                                 setActiveChapterId(chapterId);
                                 setActivePageId(pageId);
                                 setActivePhotoEdit(null);
                                 setActiveTextEdit(null);
                             }}
-                            onSelectCover={handleSelectCover}
-                            onSelectPreface={handleSelectPreface}
                             onUnlock={() => setShowUnlockModal(true)}
                         />
                     )}
 
-                    {/* Column 2: Zoomable Canvas Panel */}
-                    <CanvasArea
-                        activeChapterId={activeChapterId}
-                        activePageId={activePageId}
-                        isEditingCover={isEditingCover}
-                        isEditingPreface={isEditingPreface}
-                        isDrawerOpen={isDrawerOpen}
-                        setIsDrawerOpen={setIsDrawerOpen}
-                        isFullscreenPreview={isFullscreenPreview}
-                        showGridOverlay={showGridOverlay}
-                        previewScale={previewScale}
-                        setPreviewScale={setPreviewScale}
-                        canvasRef={canvasRef}
-                        handleZoomIn={handleZoomIn}
-                        handleZoomOut={handleZoomOut}
-                    />
-
-                    {/* Column 3: Collapsible RightPanel (SidebarProperty) */}
-                    {!isFullscreenPreview && (
-                        <SidebarProperty
+                    {/* Column 2: Zoomable Canvas Panel + Top Contextual Toolbar */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                        {!isFullscreenPreview && (
+                            <TopContextualToolbar
+                                activeChapterId={activeChapterId}
+                                activePageId={activePageId}
+                            />
+                        )}
+                        <CanvasArea
                             activeChapterId={activeChapterId}
                             activePageId={activePageId}
-                            isEditingCover={isEditingCover}
-                            setIsEditingCover={setIsEditingCover}
-                            isEditingPreface={isEditingPreface}
-                            setIsEditingPreface={setIsEditingPreface}
                             isDrawerOpen={isDrawerOpen}
                             setIsDrawerOpen={setIsDrawerOpen}
-                            showGridOverlay={showGridOverlay}
-                            setShowGridOverlay={setShowGridOverlay}
+                            isFullscreenPreview={isFullscreenPreview}
+                            previewScale={previewScale}
+                            setPreviewScale={setPreviewScale}
+                            canvasRef={canvasRef}
+                            handleZoomIn={handleZoomIn}
+                            handleZoomOut={handleZoomOut}
                         />
+                    </div>
+
+                    {/* Column 3: Collapsible RightPanel Dock & Drawer */}
+                    {!isFullscreenPreview && (
+                        <div className="flex h-full items-stretch shrink-0 z-20">
+                            {isDrawerOpen && rightActiveTab && (
+                                <RightEditorDrawer
+                                    activeTab={rightActiveTab}
+                                    activeChapterId={activeChapterId}
+                                    activePageId={activePageId}
+                                />
+                            )}
+                            <RightEditorDock
+                                activeTab={rightActiveTab}
+                                setActiveTab={setRightActiveTab}
+                                isDrawerOpen={isDrawerOpen}
+                                setIsDrawerOpen={setIsDrawerOpen}
+                            />
+                        </div>
                     )}
                 </div>
 

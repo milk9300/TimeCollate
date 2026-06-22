@@ -6,30 +6,15 @@ import { useAuthStore } from '../../../store/useAuthStore';
 interface AnnouncementModalProps {
     isOpen: boolean;
     onClose: () => void;
+    content: string;
 }
 
-export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, onClose }) => {
+export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, onClose, content }) => {
     const { updateUser } = useAuthStore();
-    const [content, setContent] = useState<string | null>(null);
     const [countdown, setCountdown] = useState(5);
 
     useEffect(() => {
         if (isOpen) {
-            const fetchAnnouncement = async () => {
-                try {
-                    const response = await axios.get('/auth/announcement');
-                    if (response.data.success) {
-                        setContent(response.data.data);
-                        // 如果公告为空，直接关闭
-                        if (!response.data.data) {
-                            onClose();
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch announcement:', error);
-                }
-            };
-            fetchAnnouncement();
             setCountdown(5); // 重新打开时重置倒计时
         }
     }, [isOpen]);
@@ -37,7 +22,7 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, on
     // 倒计时逻辑
     useEffect(() => {
         let timer: any;
-        if (isOpen && content !== null && countdown > 0) {
+        if (isOpen && countdown > 0) {
             timer = setInterval(() => {
                 setCountdown(prev => prev - 1);
             }, 1000);
@@ -45,9 +30,9 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, on
         return () => {
             if (timer) clearInterval(timer);
         };
-    }, [isOpen, content, countdown]);
+    }, [isOpen, countdown]);
 
-    if (!isOpen || content === null) return null;
+    if (!isOpen) return null;
 
     const handleConfirm = async () => {
         if (countdown > 0) return; // 安全检查

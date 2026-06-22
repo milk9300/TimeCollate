@@ -27,18 +27,29 @@ import {
     updatePageAtmosphere,
     updatePageFontFamily,
     updateElementOverride,
+    updatePageDecorations,
     type TextSlotData
 } from '../../../utils/textSlotHelper';
 
 const bookService = getBookService();
+
+const PRESET_PHOTOS = [
+    { id: 's-1', url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80', caption: '那年夏天，我们去看海' },
+    { id: 's-2', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop&q=80', caption: '阳光洒落在沙滩上' },
+    { id: 's-3', url: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=600&auto=format&fit=crop&q=80', caption: '大自然最温柔的馈赠' },
+    { id: 's-4', url: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&auto=format&fit=crop&q=80', caption: '背起行囊，走向远方' },
+    { id: 's-5', url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop&q=80', caption: '午后的咖啡馆，听一首歌' },
+    { id: 's-6', url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&auto=format&fit=crop&q=80', caption: '享受慵懒的猫咪时光' },
+    { id: 's-7', url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=600&auto=format&fit=crop&q=80', caption: '远山如黛，晨雾缭绕' },
+    { id: 's-8', url: 'https://images.unsplash.com/photo-1472214222541-d510753a49fa?w=600&auto=format&fit=crop&q=80', caption: '麦田里的守望者' },
+    { id: 's-9', url: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=600&auto=format&fit=crop&q=80', caption: '微风轻抚着树叶' }
+];
 
 interface SidebarPropertyProps {
     activeChapterId: string | null;
     activePageId: string | null;
     isEditingCover: boolean;
     setIsEditingCover: (val: boolean) => void;
-    isEditingPreface: boolean;
-    setIsEditingPreface: (val: boolean) => void;
     isDrawerOpen: boolean;
     setIsDrawerOpen: (val: boolean) => void;
     showGridOverlay: boolean;
@@ -53,8 +64,6 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
     activePageId,
     isEditingCover,
     setIsEditingCover,
-    isEditingPreface,
-    setIsEditingPreface,
     isDrawerOpen,
     setIsDrawerOpen,
     showGridOverlay,
@@ -216,7 +225,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
             transform: 'translate(-50%, -50%) rotate(0deg)'
         };
 
-        const updatedContent = updateElementOverride(activePage.content, '', {}, [...decorations, newSticker]);
+        const updatedContent = updatePageDecorations(activePage.content, [...decorations, newSticker]);
         updatePage(activeChapter.id, activePage.id, { content: updatedContent });
     }, [activePage, activeChapter, updatePage]);
 
@@ -668,15 +677,6 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                                             当前正在编辑回忆书的<strong>经典封面结构</strong>。若需要替换或设置封面的氛围色，请在左侧点击封面卡片，或者在“全局”主题设置中一键定制回忆书的整套基调。
                                         </div>
                                     </div>
-                                ) : isEditingPreface ? (
-                                    <div className="bg-white/70 backdrop-blur-md p-4 rounded-xl border border-white/50 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.03)] space-y-4">
-                                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                                            序言页编辑器提示
-                                        </div>
-                                        <div className="text-[11px] text-gray-500 leading-relaxed font-normal">
-                                            双击左侧画布文字可激活就地编辑，您也可以在右侧“全局”选项卡中启用或修改序言引言金句，一键排版输出。
-                                        </div>
-                                    </div>
                                 ) : activePage ? (
                                     <AccordionSection
                                         title="整页排版属性"
@@ -764,7 +764,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                             />
                         ) : (
                             <div className="text-center py-12 bg-gray-50/30 border border-dashed border-gray-200 rounded-xl text-gray-400 text-[10px]">
-                                封面/序言页不支持素材操作，请选择正页。
+                                封面页不支持素材操作，请选择正页。
                             </div>
                         )}
                     </div>
@@ -788,64 +788,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                             </select>
                         </div>
 
-                        <div className="space-y-3 border-t border-gray-100 pt-4">
-                            <div className="flex items-center justify-between">
-                                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                                    启用序言页
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={currentBook.showPreface !== false}
-                                        onChange={(e) => updateBookSettings({ showPreface: e.target.checked })}
-                                        className="sr-only peer"
-                                    />
-                                    <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
-                                </label>
-                            </div>
 
-                            {currentBook.showPreface !== false && (
-                                <div className="space-y-3 pt-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                                    <div>
-                                        <label className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider mb-1">
-                                            引言 / 序言内容
-                                        </label>
-                                        <textarea
-                                            value={currentBook.preface || ''}
-                                            onChange={(e) => updateBookSettings({ preface: e.target.value })}
-                                            className="w-full h-24 resize-none text-xs font-medium bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 outline-none focus:border-indigo-600 focus:bg-white transition-all leading-relaxed"
-                                            placeholder="在这里输入作品的引言、寄语或序言..."
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">
-                                            金句模板库 (一键套用)
-                                        </span>
-                                        <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
-                                            {PREFACE_TEMPLATES.map((tpl) => (
-                                                <button
-                                                    key={tpl.id}
-                                                    onClick={() => {
-                                                        const compiled = compilePrefaceText(tpl.content, currentBook);
-                                                        updateBookSettings({ preface: compiled });
-                                                    }}
-                                                    className="p-2 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 rounded-xl text-left transition-all duration-150 group cursor-pointer"
-                                                    title={tpl.content}
-                                                >
-                                                    <div className="text-[10px] font-bold text-slate-700 group-hover:text-indigo-700">
-                                                        {tpl.name}
-                                                    </div>
-                                                    <div className="text-[9px] text-slate-400 line-clamp-1 group-hover:text-indigo-400 mt-0.5">
-                                                        {tpl.content.replace(/\n/g, ' ')}
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
 
                         <div className="space-y-2 border-t border-gray-100 pt-4">
                             <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">

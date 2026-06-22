@@ -3,6 +3,7 @@ import { useBookStore, getVirtualChapters } from '../../store';
 import type { Photo } from '../../types';
 import { Plus, RefreshCw, Eraser, Crop } from 'lucide-react';
 import { getThumbnailUrl } from '../../utils/cdn';
+import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 
 interface EditablePhotoProps {
     photo: Photo | undefined;
@@ -336,54 +337,28 @@ export const EditablePhoto: React.FC<EditablePhotoProps> = ({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             data-photo-id={photo.id}
+            data-element-id={photo.id}
+            data-element-type="photo"
             data-chapter-id={chapterId}
             data-page-id={pageId}
             className={`${className} relative transition-all ${
                 editorMode === 'select'
-                    ? 'cursor-pointer hover:ring-2 hover:ring-indigo-600/40 hover:ring-offset-1'
+                    ? 'cursor-pointer hover:outline hover:outline-2 hover:outline-[#8b3dff]/40'
                     : ''
-            } ${isSelected ? 'ring-2 ring-indigo-600 ring-offset-2' : ''} ${
-                isDragOver ? 'ring-2 ring-indigo-600 ring-offset-2 scale-[0.98] opacity-80' : ''
+            } ${
+                isDragOver ? 'scale-[0.98] opacity-80' : ''
             }`}
             style={{ ...style }}
         >
             {/* styled frame */}
             {renderStyledContent()}
 
-            {/* Canvas Hover Context Toolbar (玻璃拟态悬浮操作栏) */}
-            {editorMode === 'select' && (isHovered || isSelected) && (
-                <div 
-                    className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center bg-slate-900/90 backdrop-blur-md text-white rounded-lg shadow-2xl border border-slate-700/50 p-1 gap-1 text-[9px] pointer-events-auto transition-all animate-fade-in"
-                    onClick={(e) => e.stopPropagation()} // 避免触发选择
-                >
-                    <button 
-                        onClick={handleReplaceClick}
-                        disabled={isReplacing}
-                        className="p-1 hover:bg-slate-800 rounded transition-colors flex items-center gap-1 font-bold px-1.5 whitespace-nowrap text-gray-200"
-                        title="上传并替换照片"
-                    >
-                        <RefreshCw size={10} className={isReplacing ? 'animate-spin' : ''} />
-                        <span>{isReplacing ? '上传中...' : '替换'}</span>
-                    </button>
-                    <div className="w-[1px] h-3 bg-slate-700/50" />
-                    <button 
-                        onClick={handleClearClick}
-                        className="p-1 hover:bg-slate-800 rounded transition-colors flex items-center gap-1 font-bold px-1.5 whitespace-nowrap text-red-400 hover:text-red-300"
-                        title="移出当前插槽并回退至素材栏"
-                    >
-                        <Eraser size={10} />
-                        <span>清空</span>
-                    </button>
-                    <div className="w-[1px] h-3 bg-slate-700/50" />
-                    <button 
-                        onClick={handleCropClick}
-                        className="p-1 hover:bg-slate-800 rounded transition-colors flex items-center gap-1 font-bold px-1.5 whitespace-nowrap text-indigo-400 hover:text-indigo-300"
-                        title="打开精细调节面板"
-                    >
-                        <Crop size={10} />
-                        <span>微调</span>
-                    </button>
-                </div>
+            {/* Canva 风格选中边框 */}
+            {isSelected && !isDragOver && (
+                <CanvaSelectionFrame showCornerHandles={true} showEdgeHandles="all" />
+            )}
+            {isDragOver && (
+                <CanvaSelectionFrame showCornerHandles={false} showEdgeHandles="none" />
             )}
 
             {/* Hidden upload input */}

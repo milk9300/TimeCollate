@@ -34,7 +34,7 @@ const SAMPLE_PHOTOS = [
 /**
  * 模板与主题市场页面
  */
-export function Market() {
+export function Market({ isEmbed = false }: { isEmbed?: boolean }) {
     const { 
         marketTemplates, 
         marketThemes, 
@@ -158,10 +158,45 @@ export function Market() {
         setSelectedTemplateIdForThemePreview('collage');
     };
 
-    return (
-        <MainLayout title="创意市场" onSearch={setSearchQuery}>
+    const tabContent = (
+        <div className="relative bg-slate-100 p-1 rounded-xl flex gap-1 border border-slate-200/50 w-56 sm:w-60">
+            <div 
+                className="absolute top-1 bottom-1 bg-white rounded-lg shadow-sm transition-all duration-300 ease-out"
+                style={{
+                    left: activeTab === 'templates' ? '4.5px' : 'calc(50% + 2.5px)',
+                    width: 'calc(50% - 7px)'
+                }}
+            />
+            <button
+                onClick={() => { setActiveTab('templates'); setSearchQuery(''); setSelectedCategory('all'); }}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                    activeTab === 'templates'
+                        ? 'text-indigo-650'
+                        : 'text-slate-500 hover:text-slate-805'
+                }`}
+            >
+                <LayoutGrid size={14} />
+                排版模板
+            </button>
+            <button
+                onClick={() => { setActiveTab('themes'); setSearchQuery(''); setSelectedCategory('all'); }}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                    activeTab === 'themes'
+                        ? 'text-indigo-650'
+                        : 'text-slate-500 hover:text-slate-805'
+                }`}
+            >
+                <Palette size={14} />
+                视觉主题
+            </button>
+        </div>
+    );
+
+    const content = (
+        <>
             <div className="p-8">
-                {/* Header */}
+            {/* Header */}
+            {!isEmbed ? (
                 <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-3">
@@ -173,43 +208,18 @@ export function Market() {
                         </p>
                     </div>
 
-                    {/* Tab Switcher */}
                     <div className="flex flex-col sm:flex-row gap-3 items-center">
-                        {/* Tab Navigation */}
-                        <div className="relative bg-slate-100 p-1 rounded-xl flex gap-1 border border-slate-200/50 w-56 sm:w-60">
-                            {/* Sliding background */}
-                            <div 
-                                className="absolute top-1 bottom-1 bg-white rounded-lg shadow-sm transition-all duration-300 ease-out"
-                                style={{
-                                    left: activeTab === 'templates' ? '4px' : 'calc(50% + 2px)',
-                                    width: 'calc(50% - 6px)'
-                                }}
-                            />
-                            <button
-                                onClick={() => { setActiveTab('templates'); setSearchQuery(''); setSelectedCategory('all'); }}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
-                                    activeTab === 'templates'
-                                        ? 'text-indigo-600'
-                                        : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            >
-                                <LayoutGrid size={14} />
-                                排版模板
-                            </button>
-                            <button
-                                onClick={() => { setActiveTab('themes'); setSearchQuery(''); setSelectedCategory('all'); }}
-                                className={`relative z-10 flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
-                                    activeTab === 'themes'
-                                        ? 'text-indigo-600'
-                                        : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            >
-                                <Palette size={14} />
-                                视觉主题
-                            </button>
-                        </div>
+                        {tabContent}
                     </div>
                 </div>
+            ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                    <p className="text-slate-450 text-xs font-semibold">
+                        浏览并收藏系统内置的排版布局与视觉主题配色
+                    </p>
+                    {tabContent}
+                </div>
+            )}
 
             {/* Error Message */}
             {marketError && (
@@ -829,6 +839,13 @@ export function Market() {
                     </div>
                 );
             })()}
+        </>
+    );
+
+    if (isEmbed) return content;
+    return (
+        <MainLayout title="创意市场" onSearch={setSearchQuery}>
+            {content}
         </MainLayout>
     );
 }

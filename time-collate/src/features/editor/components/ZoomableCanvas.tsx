@@ -48,9 +48,53 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
     onScaleChange,
 }, ref) => {
     const transformRef = useRef<ReactZoomPanPinchRef>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const editorMode = useBookStore((state) => state.editorMode);
     const setEditorMode = useBookStore((state) => state.setEditorMode);
     const isSpacePressedRef = useRef(false);
+
+    // 自定义滚轮平移事件处理，支持 Shift 左右滑动
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const handleNativeWheel = (e: WheelEvent) => {
+            // 如果按下了 Ctrl 或 Meta 键，交给 react-zoom-pan-pinch 处理缩放
+            if (e.ctrlKey || e.metaKey) {
+                return;
+            }
+
+            // 阻止浏览器默认滚动行为
+            e.preventDefault();
+
+            if (transformRef.current) {
+                const state = transformRef.current.instance?.transformState || (transformRef.current as any).state;
+                if (!state) return;
+                const { positionX, positionY, scale } = state;
+                
+                // 滚轮平移速度系数
+                const speed = 1.0;
+                let deltaX = e.deltaX;
+                let deltaY = e.deltaY;
+
+                // 按住 Shift 键时，将垂直滚动转换为水平滚动
+                if (e.shiftKey && Math.abs(deltaY) > Math.abs(deltaX)) {
+                    deltaX = deltaY;
+                    deltaY = 0;
+                }
+
+                const newX = positionX - deltaX * speed;
+                const newY = positionY - deltaY * speed;
+
+                transformRef.current.setTransform(newX, newY, scale, 0);
+            }
+        };
+
+        container.addEventListener('wheel', handleNativeWheel, { passive: false });
+        return () => {
+            container.removeEventListener('wheel', handleNativeWheel);
+        };
+    }, []);
 
     // #region 缩放操作函数
     const handleZoomIn = useCallback(() => {
@@ -201,6 +245,7 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
             panning={{
                 disabled: editorMode === 'select',
                 velocityDisabled: false,
+                wheelPanning: false, // 禁用内置滚动平移，改用上方自定义手势监听
             }}
             wheel={{
                 step: 0.05,
@@ -213,7 +258,10 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
             }}
         >
             {() => (
-                <div className={`relative w-full h-full ${cursorClass}`}>
+                <div 
+                    ref={containerRef}
+                    className={`relative w-full h-full ${cursorClass}`}
+                >
                     <TransformComponent
                         wrapperStyle={{
                             width: '100%',

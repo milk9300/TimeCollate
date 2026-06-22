@@ -59,6 +59,47 @@ router.get('/:id', authMiddleware, async (req, res) => {
 });
 
 import { authService } from '../services/AuthService.js';
+import { sanitizePageToTemplate } from '../utils/templateSanitizer.js';
+
+/**
+ * POST /api/templates/publish
+ * 创作者发布排版设计为公共模板（物理复制私照并脱敏）
+ */
+router.post('/publish', authMiddleware, async (req, res) => {
+    try {
+        const user = await authService.getUserById(req.userId!);
+        if (!user || (user.role !== 'creator' && user.role !== 'admin')) {
+            return res.status(403).json({ success: false, error: '权限不足，仅允许创作者或管理员发布模板到公共市场' });
+        }
+
+        const { id, name, templateType, photoCount, category, elements, background, thumbnailUrl } = req.body;
+        
+        if (!id || !name || !elements) {
+            return res.status(400).json({ success: false, error: '必填参数缺失 (id, name, elements)' });
+        }
+
+        // 调用 Fail-Fast 数据脱敏与资源一键转公管道
+        const sanitizedSchema = await sanitizePageToTemplate(elements, background || {}, req.userId!);
+
+        const templateData = {
+            id,
+            name,
+            templateType: templateType || 'content',
+            photoCount: photoCount || 0,
+            category: category || 'General',
+            layoutSchema: sanitizedSchema,
+            thumbnailUrl,
+            visibility: 'public' as const,
+            creatorId: req.userId!,
+            createdAt: Date.now()
+        };
+
+        const saved = await templateService.saveTemplate(templateData);
+        sendSuccess(res, saved, '发布模板成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
 
 /**
  * POST /api/templates

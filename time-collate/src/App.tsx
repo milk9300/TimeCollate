@@ -5,7 +5,8 @@ import { useAuthStore } from './store/useAuthStore';
 import './App.css';
 
 // 页面组件懒加载
-const Lobby = lazy(() => import('./features/book/pages/Lobby').then(m => ({ default: m.Lobby })));
+const Home = lazy(() => import('./features/book/pages/Home').then(m => ({ default: m.Home })));
+const Workbench = lazy(() => import('./features/book/pages/Workbench').then(m => ({ default: m.Workbench })));
 const Editor = lazy(() => import('./features/editor/pages/Editor').then(m => ({ default: m.Editor })));
 const Trash = lazy(() => import('./features/book/pages/Trash').then(m => ({ default: m.Trash })));
 const Preview = lazy(() => import('./features/editor/pages/Preview').then(m => ({ default: m.Preview })));
@@ -56,6 +57,14 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 };
 
 /**
+ * 智能兜底重定向组件
+ */
+const FallbackRedirect = () => {
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  return <Navigate to={isAuthenticated ? "/workbench" : "/"} replace />;
+};
+
+/**
  * 应用路由容器
  */
 function App() {
@@ -94,14 +103,15 @@ function App() {
       }>
         <Routes>
           {/* 公开路由 */}
+          <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
-
           <Route path="/s/:slug" element={<SharedBookViewer />} />
 
           {/* 私有路由（受保护） */}
-          <Route path="/" element={<AuthGuard><Lobby /></AuthGuard>} />
+          <Route path="/workbench" element={<AuthGuard><Workbench /></AuthGuard>} />
           <Route path="/square" element={<AuthGuard><Square /></AuthGuard>} />
           <Route path="/editor/:bookId" element={<AuthGuard><Editor /></AuthGuard>} />
+          <Route path="/editor/template/:templateId" element={<AuthGuard><Editor /></AuthGuard>} />
           <Route path="/book/:bookId/preview" element={<AuthGuard><Preview /></AuthGuard>} />
           <Route path="/read/:bookId" element={<AuthGuard><Reader /></AuthGuard>} />
           <Route path="/trash" element={<AuthGuard><Trash /></AuthGuard>} />
@@ -126,7 +136,7 @@ function App() {
           <Route path="/admin/danger" element={<AdminGuard><AdminDanger /></AdminGuard>} />
 
           {/* 默认重定向 */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<FallbackRedirect />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

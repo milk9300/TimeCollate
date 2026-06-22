@@ -43,6 +43,7 @@ export function Lobby() {
 
     const [searchQuery, setSearchQuery] = useState('');
     const [showAnnouncement, setShowAnnouncement] = useState(false);
+    const [announcementContent, setAnnouncementContent] = useState('');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [contextMenu, setContextMenu] = useState<{
@@ -88,7 +89,18 @@ export function Lobby() {
         loadFavoritedBooks();
         // 检查是否需要显示首次公告
         if (user && !user.hasSeenAnnouncement) {
-            setShowAnnouncement(true);
+            const checkAnnouncement = async () => {
+                try {
+                    const response = await axios.get('/auth/announcement');
+                    if (response.data.success && response.data.data) {
+                        setAnnouncementContent(response.data.data);
+                        setShowAnnouncement(true);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch announcement in lobby:', error);
+                }
+            };
+            checkAnnouncement();
         }
     }, [user]);
 
@@ -353,6 +365,9 @@ export function Lobby() {
         book.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    // 调整为更合理的书架网格列数，适应右侧固定宽度的档案馆面板
+    const bookshelfColsClass = "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5";
+
     return (
         <MainLayout title="拾光集">
             <div className="p-8">
@@ -383,7 +398,7 @@ export function Lobby() {
                                 theme="oak"
                                 gap={24}
                                 rowGap={64}
-                                colsClass="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                                colsClass={bookshelfColsClass}
                             >
                                 {[1, 2, 3, 4, 5, 6].map(i => (
                                     <div key={i} className="aspect-[3/4] bg-white/70 rounded-2xl border border-[#E2E8F0] animate-pulse shadow-sm"></div>
@@ -407,7 +422,7 @@ export function Lobby() {
                                     theme="oak"
                                     gap={24}
                                     rowGap={64}
-                                    colsClass="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                                    colsClass={bookshelfColsClass}
                                 >
                                     {/* 虚线新建卡片 - 仅在未搜索时，作为首个网格卡片展示 */}
                                     {!searchQuery && (
@@ -476,7 +491,7 @@ export function Lobby() {
                                          theme="oak"
                                          gap={24}
                                          rowGap={64}
-                                         colsClass="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                                         colsClass={bookshelfColsClass}
                                      >
                                          {[1, 2, 3].map(i => (
                                              <div key={i} className="aspect-[3/4] bg-white/70 rounded-2xl border border-[#E2E8F0] animate-pulse shadow-sm"></div>
@@ -494,7 +509,7 @@ export function Lobby() {
                                          theme="oak"
                                          gap={24}
                                          rowGap={64}
-                                         colsClass="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                                         colsClass={bookshelfColsClass}
                                      >
                                          {favoritedBooks.map((book) => (
                                              <BookCard
@@ -635,6 +650,7 @@ export function Lobby() {
             <AnnouncementModal
                 isOpen={showAnnouncement}
                 onClose={() => setShowAnnouncement(false)}
+                content={announcementContent}
             />
 
             {/* 新建时光集弹窗 */}

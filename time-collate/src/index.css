@@ -17,19 +17,49 @@
 }
 
 @theme {
-  --color-primary: #171717;
-  --color-secondary: #404040;
-  --color-cta: #D4AF37;
-  --color-background: #FFFFFF;
-  --color-text: #171717;
+  /* Override White to be 宣纸白 */
+  --color-white: #FDFBF7;
 
-  --color-indigo-650: #4c42df;
-  --color-purple-650: #7431e3;
-  --color-slate-650: #3d4b5f;
-  --color-slate-450: #7c8ba1;
+  /* Redefine Indigo palette as 黛蓝 (Base 600 = #3A4454) */
+  --color-indigo-50: #F4F6F8;
+  --color-indigo-100: #E9EDF2;
+  --color-indigo-200: #D2DAE5;
+  --color-indigo-300: #AEBCCF;
+  --color-indigo-400: #8197B3;
+  --color-indigo-500: #5D7596;
+  --color-indigo-600: #3A4454;
+  --color-indigo-650: #3A4454;
+  --color-indigo-700: #2C3539;
+  --color-indigo-800: #232A2E;
+  --color-indigo-900: #1C2124;
+  --color-indigo-950: #101416;
 
-  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
-  --shadow-gold: 0 4px 14px 0 rgba(212, 175, 55, 0.39);
+  /* Redefine Slate palette as 松烟墨 (Base 800/900 = #2C3539) */
+  --color-slate-50: #F7F4EF; /* 暖奶杏 */
+  --color-slate-100: #EEEBE5;
+  --color-slate-200: #E0DDD6;
+  --color-slate-300: #C2BEB5;
+  --color-slate-400: #9B978E;
+  --color-slate-500: #747067;
+  --color-slate-600: #56534C;
+  --color-slate-700: #3D3B36;
+  --color-slate-800: #2C3539; /* 松烟墨 */
+  --color-slate-900: #1F2527;
+  --color-slate-950: #141719;
+
+  /* Semantic Theme Variables */
+  --color-primary: #2C3539;
+  --color-secondary: #56534C;
+  --color-cta: #C5A059;
+  --color-background: #FDFBF7;
+  --color-text: #2C3539;
+
+  --color-purple-650: #C5A059;
+  --color-slate-650: #56534C;
+  --color-slate-450: #9B978E;
+
+  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
+  --shadow-gold: 0 4px 14px 0 rgba(197, 160, 89, 0.2);
 }
 
 @layer base {
@@ -58,7 +88,7 @@
   }
 
   .luxury-gold-gradient {
-    background: linear-gradient(135deg, #D4AF37 0%, #F1D382 50%, #D4AF37 100%);
+    background: linear-gradient(135deg, #C5A059 0%, #F1D382 50%, #C5A059 100%);
   }
 
   .custom-scrollbar::-webkit-scrollbar {
@@ -70,12 +100,12 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #E2E8F0;
+    background: #E0DDD6;
     border-radius: 10px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #CBD5E1;
+    background: #C2BEB5;
   }
 
   /* 编辑器属性面板专用超细滚动条 */
@@ -157,5 +187,14 @@
     background: rgba(255, 255, 255, 0.95) !important;
     border-color: rgba(99, 102, 241, 0.3) !important;
     box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15) !important;
+  }
+
+  /* 隐藏水平/垂直滚动条但保留滚动功能 */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
   }
 }

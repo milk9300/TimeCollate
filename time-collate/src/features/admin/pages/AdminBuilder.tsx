@@ -325,6 +325,7 @@ export function AdminBuilder() {
     // 模板基础信息状态
     const [templateName, setTemplateName] = useState('');
     const [templateCategory, setTemplateCategory] = useState('general');
+    const [templateType, setTemplateType] = useState<'cover' | 'preface' | 'structural' | 'content'>('content');
     const [visibility, setVisibility] = useState<'public' | 'private'>('public');
     const [creatorId, setCreatorId] = useState('system');
     const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
@@ -379,6 +380,7 @@ export function AdminBuilder() {
                     justLoaded.current = true;
                     setTemplateName(tpl.name);
                     setTemplateCategory(tpl.category || 'general');
+                    setTemplateType(tpl.templateType || 'content');
                     setVisibility(tpl.visibility || 'public');
                     setCreatorId(tpl.creatorId || 'system');
                     setIsNameManuallyEdited(true);
@@ -483,6 +485,7 @@ export function AdminBuilder() {
                 name: templateName,
                 photoCount,
                 category: templateCategory,
+                templateType,
                 layoutSchema,
                 visibility,
                 creatorId: user?.role === 'admin' ? creatorId : (user?.id || 'system')
@@ -506,7 +509,7 @@ export function AdminBuilder() {
         }, 3000);
 
         return () => clearTimeout(timer);
-    }, [elements, templateName, templateCategory, visibility, canvasMaterial]);
+    }, [elements, templateName, templateCategory, templateType, visibility, canvasMaterial]);
 
     // 页面意外关闭防丢保护
     useEffect(() => {
@@ -997,6 +1000,7 @@ export function AdminBuilder() {
             name: templateName,
             photoCount,
             category: templateCategory,
+            templateType,
             layoutSchema,
             visibility,
             creatorId: user?.role === 'admin' ? creatorId : (user?.id || 'system')
@@ -1814,6 +1818,20 @@ export function AdminBuilder() {
                                     </h3>
                                     
                                     <div className="flex flex-col gap-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">结构类型 (Template Type)</label>
+                                            <select
+                                                value={templateType}
+                                                onChange={(e) => setTemplateType(e.target.value as any)}
+                                                className="w-full px-3 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-100 focus:border-indigo-600 outline-none transition-all text-slate-700 cursor-pointer"
+                                            >
+                                                <option value="content">内容页 (Content)</option>
+                                                <option value="cover">书封页 (Cover)</option>
+                                                <option value="preface">前言页 (Preface)</option>
+                                                <option value="structural">过渡页 (Structural)</option>
+                                            </select>
+                                        </div>
+
                                         <div className="flex flex-col gap-1.5">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">分类</label>
                                             <select

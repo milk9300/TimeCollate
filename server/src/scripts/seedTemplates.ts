@@ -317,36 +317,37 @@ async function runMigrationAndSeed() {
     try {
         console.log('正在检测并升级数据库结构...');
         
-        // 1. 修改 pages 表的 layout 列类型为 VARCHAR(36)
-        await pool.query(
-            `ALTER TABLE pages MODIFY COLUMN layout VARCHAR(36) DEFAULT 'grid' COMMENT '布局类型/模板ID'`
-        );
-        console.log('✅ pages.layout 列已成功修改为 VARCHAR(36)');
-
-        // 2. 创建 book_templates 表 (如果不存在)
+        // 1. 创建 page_templates 表 (如果不存在)
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS book_templates (
-                id VARCHAR(36) PRIMARY KEY COMMENT '模板唯一标识',
-                name VARCHAR(50) NOT NULL COMMENT '模板名称',
-                photo_count INT NOT NULL COMMENT '支持照片数量',
-                category VARCHAR(20) DEFAULT 'general' COMMENT '分类类型',
-                layout_schema JSON NOT NULL COMMENT '模板排版布局JSON定义',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
-            ) ENGINE=InnoDB COMMENT='数据驱动排版模板表'
+            CREATE TABLE IF NOT EXISTS page_templates (
+                id VARCHAR(36) PRIMARY KEY COMMENT '模板唯一标识UUID',
+                name VARCHAR(100) NOT NULL COMMENT '模板名称',
+                template_type ENUM('cover', 'preface', 'structural', 'content') NOT NULL DEFAULT 'content' COMMENT '模板结构类型',
+                photo_count INT NOT NULL DEFAULT 0 COMMENT '支持/推荐照片数量',
+                category VARCHAR(50) NOT NULL DEFAULT 'general' COMMENT '书籍主题分类',
+                elements JSON NOT NULL COMMENT '核心 Canvas JSON Schema',
+                thumbnail_url VARCHAR(500) DEFAULT NULL COMMENT '预览缩略图 WebP URL',
+                creator_id VARCHAR(36) NOT NULL DEFAULT 'system' COMMENT '创作者ID',
+                visibility ENUM('private', 'public') NOT NULL DEFAULT 'private' COMMENT '可见性',
+                created_at BIGINT NOT NULL COMMENT '创建时间戳(毫秒)',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='排版页模板表'
         `);
-        console.log('✅ book_templates 表已就绪');
+        console.log('✅ page_templates 表已就绪');
 
         // 3. 注入系统内置的全部排版模板 (使用 Schema)
         console.log('正在灌入内置排版模板种子数据...');
+        const now = Date.now();
         for (const t of templates) {
             const schemaStr = JSON.stringify(t.layout_schema);
+            const templateType = t.id === 'cover' ? 'structural' : 'content';
             await pool.query(
-                `INSERT INTO book_templates (id, name, photo_count, category, layout_schema, visibility, creator_id) 
-                 VALUES (?, ?, ?, ?, ?, 'public', 'system') 
-                 ON DUPLICATE KEY UPDATE name = ?, photo_count = ?, category = ?, layout_schema = ?, visibility = 'public', creator_id = 'system'`,
+                `INSERT INTO page_templates (id, name, template_type, photo_count, category, elements, visibility, creator_id, created_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, 'public', 'system', ?) 
+                 ON DUPLICATE KEY UPDATE name = ?, template_type = ?, photo_count = ?, category = ?, elements = ?, visibility = 'public', creator_id = 'system'`,
                 [
-                    t.id, t.name, t.photo_count, t.category, schemaStr,
-                    t.name, t.photo_count, t.category, schemaStr
+                    t.id, t.name, templateType, t.photo_count, t.category, schemaStr, now,
+                    t.name, templateType, t.photo_count, t.category, schemaStr
                 ]
             );
             console.log(`- 注入模板: ${t.name} (${t.id})`);

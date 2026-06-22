@@ -28,17 +28,34 @@ interface BookState {
     saveStatus: 'saved' | 'saving' | 'error'; // 新增：云同步保存状态
     uploadingJobs: Record<string, { name: string; progress: number; status: 'uploading' | 'success' | 'error' }>; // 新增：全局直传任务管理
     editorMode: 'select' | 'hand'; // 编辑器操作模式
+    editorScope: 'cover' | 'chapters'; // 当前处于“书封扉页”还是“正文章节”大模态
+    activeFrontPage: 'cover' | 'preface'; // 书封扉页大模式下，当前编辑的页面
     historyPast: Book[];          // 历史状态栈（过去）
     historyFuture: Book[];        // 历史状态栈（未来）
     activePhotoEdit: { chapterId: string, pageId: string, photoId: string } | null; // 当前正在被编辑微调的图片
     activeTextEdit: { chapterId: string, pageId: string, slotId: string } | null; // 当前正在被编辑微调的文本槽位
+    activeStickerEdit: { chapterId: string, pageId: string, stickerId: string } | null; // 当前正在被编辑微调的贴纸
     templates: Template[];        // 动态加载的排版模板库
     themes: BookTheme[];          // 动态加载的主题库
 
+    // UI Drawer States
+    rightActiveTab: 'templates' | 'photos' | 'decorations' | 'global' | 'inspector' | null;
+    isDrawerOpen: boolean;
+    activeInspectorSection: 'edit' | 'crop' | 'frame' | 'font' | 'color' | 'position' | 'sticker-adjust' | null;
+
     // Mode Actions
     setEditorMode: (mode: 'select' | 'hand') => void;
+    setEditorScope: (scope: 'cover' | 'chapters') => void;
+    setActiveFrontPage: (page: 'cover' | 'preface') => void;
     setActivePhotoEdit: (edit: { chapterId: string, pageId: string, photoId: string } | null) => void;
     setActiveTextEdit: (edit: { chapterId: string, pageId: string, slotId: string } | null) => void;
+    setActiveStickerEdit: (edit: { chapterId: string, pageId: string, stickerId: string } | null) => void; // 新增：设置贴纸编辑状态
+    
+    // UI Drawer Actions
+    setRightActiveTab: (tab: 'templates' | 'photos' | 'decorations' | 'global' | 'inspector' | null) => void;
+    setIsDrawerOpen: (open: boolean) => void;
+    setActiveInspectorSection: (section: 'edit' | 'crop' | 'frame' | 'font' | 'color' | 'position' | 'sticker-adjust' | null) => void;
+    
     loadTemplates: () => Promise<void>; // 加载动态排版模板列表
     loadThemes: () => Promise<void>;    // 加载动态主题列表
 
@@ -52,7 +69,7 @@ interface BookState {
     updateBookSettings: (updates: Partial<Book>) => Promise<void>;
 
     // Chapter Actions
-    addChapter: (title: string) => Promise<void>;
+    addChapter: (title: string) => Promise<string | undefined>;
     updateChapter: (chapterId: string, updates: Partial<Chapter>) => Promise<void>;
     deleteChapter: (chapterId: string) => Promise<void>;
     reorderChapters: (newChapters: Chapter[]) => Promise<void>;
@@ -179,29 +196,113 @@ export const useBookStore = create<BookState>((set, get) => {
         saveStatus: 'saved',
         uploadingJobs: {},
         editorMode: 'select',
+        editorScope: 'chapters',
+        activeFrontPage: 'cover',
         historyPast: [],
         historyFuture: [],
         activePhotoEdit: null,
         activeTextEdit: null,
+        activeStickerEdit: null, // 新增贴纸编辑状态初始值
         templates: DEFAULT_TEMPLATES,
         themes: [],
+
+        // UI Drawer Initial values
+        rightActiveTab: null,
+        isDrawerOpen: false,
+        activeInspectorSection: null,
 
         setEditorMode: (mode) => {
             set({ editorMode: mode });
         },
 
+        setEditorScope: (scope) => {
+            set({
+                editorScope: scope,
+                activePhotoEdit: null,
+                activeTextEdit: null,
+                activeStickerEdit: null
+            });
+        },
+
+        setActiveFrontPage: (page) => {
+            set({
+                activeFrontPage: page,
+                activePhotoEdit: null,
+                activeTextEdit: null,
+                activeStickerEdit: null
+            });
+        },
+
         setActivePhotoEdit: (edit) => {
+            const currentSection = get().activeInspectorSection;
+            const photoSections = ['edit', 'crop', 'frame', 'position'];
+            const isCompatible = currentSection && photoSections.includes(currentSection);
+            
             set({ activePhotoEdit: edit });
             if (edit) {
-                set({ activeTextEdit: null });
+                set({
+                    activeTextEdit: null,
+                    activeStickerEdit: null,
+                    activeInspectorSection: isCompatible ? currentSection : 'edit'
+                });
+            } else {
+                const { rightActiveTab } = get();
+                if (rightActiveTab === 'inspector') {
+                    set({ rightActiveTab: null, isDrawerOpen: false, activeInspectorSection: null });
+                }
             }
         },
 
         setActiveTextEdit: (edit) => {
+            const currentSection = get().activeInspectorSection;
+            const textSections = ['font', 'color', 'position'];
+            const isCompatible = currentSection && textSections.includes(currentSection);
+
             set({ activeTextEdit: edit });
             if (edit) {
-                set({ activePhotoEdit: null });
+                set({
+                    activePhotoEdit: null,
+                    activeStickerEdit: null,
+                    activeInspectorSection: isCompatible ? currentSection : 'font'
+                });
+            } else {
+                const { rightActiveTab } = get();
+                if (rightActiveTab === 'inspector') {
+                    set({ rightActiveTab: null, isDrawerOpen: false, activeInspectorSection: null });
+                }
             }
+        },
+
+        setActiveStickerEdit: (edit) => {
+            const currentSection = get().activeInspectorSection;
+            const stickerSections = ['sticker-adjust', 'position'];
+            const isCompatible = currentSection && stickerSections.includes(currentSection);
+
+            set({ activeStickerEdit: edit });
+            if (edit) {
+                set({
+                    activePhotoEdit: null,
+                    activeTextEdit: null,
+                    activeInspectorSection: isCompatible ? currentSection : 'sticker-adjust'
+                });
+            } else {
+                const { rightActiveTab } = get();
+                if (rightActiveTab === 'inspector') {
+                    set({ rightActiveTab: null, isDrawerOpen: false, activeInspectorSection: null });
+                }
+            }
+        },
+
+        setRightActiveTab: (tab) => {
+            set({ rightActiveTab: tab });
+        },
+
+        setIsDrawerOpen: (open) => {
+            set({ isDrawerOpen: open });
+        },
+
+        setActiveInspectorSection: (section) => {
+            set({ activeInspectorSection: section });
         },
 
         loadTemplates: async () => {
@@ -273,7 +374,16 @@ export const useBookStore = create<BookState>((set, get) => {
             set({ isLoading: true, error: null });
             try {
                 const book = await bookService.getBook(id);
-                set({ currentBook: book, isLoading: false, historyPast: [], historyFuture: [] });
+                set({
+                    currentBook: book,
+                    isLoading: false,
+                    historyPast: [],
+                    historyFuture: [],
+                    editorScope: 'chapters',
+                    activePhotoEdit: null,
+                    activeTextEdit: null,
+                    activeStickerEdit: null
+                });
                 // 异步预载模板和主题
                 get().loadTemplates();
                 get().loadThemes();
@@ -291,7 +401,16 @@ export const useBookStore = create<BookState>((set, get) => {
                 if (response.items.length > 0) {
                     const fullBook = await bookService.getBook(response.items[0].id);
                     if (fullBook) {
-                        set({ currentBook: fullBook, isLoading: false, historyPast: [], historyFuture: [] });
+                        set({
+                            currentBook: fullBook,
+                            isLoading: false,
+                            historyPast: [],
+                            historyFuture: [],
+                            editorScope: 'chapters',
+                            activePhotoEdit: null,
+                            activeTextEdit: null,
+                            activeStickerEdit: null
+                        });
                         // 异步预载模板和主题
                         get().loadTemplates();
                         get().loadThemes();
@@ -311,7 +430,16 @@ export const useBookStore = create<BookState>((set, get) => {
                     showPreface: true
                 };
                 await bookService.saveBook(newBook);
-                set({ currentBook: newBook, isLoading: false, historyPast: [], historyFuture: [] });
+                set({
+                    currentBook: newBook,
+                    isLoading: false,
+                    historyPast: [],
+                    historyFuture: [],
+                    editorScope: 'chapters',
+                    activePhotoEdit: null,
+                    activeTextEdit: null,
+                    activeStickerEdit: null
+                });
                 // 异步预载模板和主题
                 get().loadTemplates();
                 get().loadThemes();
@@ -331,7 +459,7 @@ export const useBookStore = create<BookState>((set, get) => {
 
         addChapter: async (title: string) => {
             const { currentBook } = get();
-            if (!currentBook) return;
+            if (!currentBook) return undefined;
 
             const chapters = getVirtualChapters(currentBook.pages);
 
@@ -356,6 +484,7 @@ export const useBookStore = create<BookState>((set, get) => {
             };
 
             await saveStateAndHistory(updatedBook);
+            return newChapter.id;
         },
 
         updateChapter: async (chapterId: string, updates: Partial<Chapter>) => {

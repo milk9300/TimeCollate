@@ -19,6 +19,7 @@ export interface TextSlotData {
         color?: string;
         textAlign?: string;
         fontFamily?: string;
+        textDecoration?: string;
     };
 }
 
@@ -76,6 +77,7 @@ export const getSlotStyle = (content: string, slotId: string, baseStyle: React.C
         color: slotStyle.color || baseStyle.color,
         textAlign: slotStyle.textAlign as any || baseStyle.textAlign,
         fontFamily: slotStyle.fontFamily || baseStyle.fontFamily,
+        textDecoration: slotStyle.textDecoration || (baseStyle as any).textDecoration,
     };
 };
 

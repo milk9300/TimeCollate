@@ -29,7 +29,7 @@ import type { FolderNode } from '../utils/treeHelper';
 import type { MaterialFolder } from '../services/assetService';
 import { getThumbnailUrl } from '../../../utils/cdn';
 
-export function AssetCenter() {
+export function AssetCenter({ isEmbed = false }: { isEmbed?: boolean }) {
     const {
         folders,
         materials,
@@ -442,9 +442,9 @@ export function AssetCenter() {
         { key: 'sticker', label: '贴纸印章', icon: Smile }
     ];
 
-    return (
-        <MainLayout title="我的素材" hideSearch={true}>
-            <div className="flex h-[calc(100vh-80px)] font-['Outfit',_sans-serif]">
+    const content = (
+        <>
+            <div className={`flex ${isEmbed ? 'h-[calc(100vh-180px)]' : 'h-[calc(100vh-80px)]'} font-['Outfit',_sans-serif]`}>
                 
                 {/* 1. 左侧素材目录树 (Sidebar) */}
                 <aside className="w-60 bg-white border-r border-slate-100 flex flex-col shrink-0 overflow-y-auto custom-scrollbar p-5 select-none">
@@ -1185,6 +1185,13 @@ export function AssetCenter() {
                     </div>
                 </div>
             )}
+        </>
+    );
+
+    if (isEmbed) return content;
+    return (
+        <MainLayout title="我的素材" hideSearch={true}>
+            {content}
         </MainLayout>
     );
 }

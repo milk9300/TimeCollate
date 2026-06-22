@@ -13,7 +13,7 @@ export interface User {
     avatarUrl?: string;
     createdAt: number;
     hasSeenAnnouncement?: boolean;
-    role: 'user' | 'admin';
+    role: 'user' | 'creator' | 'admin';
     status: 'active' | 'banned';
     expiresAt?: number;
 }
@@ -79,7 +79,7 @@ export class AuthService {
             avatarUrl: signAvatarUrl(userRow.avatar_url) || undefined,
             createdAt: Number(userRow.created_at),
             hasSeenAnnouncement: Boolean(userRow.has_seen_announcement),
-            role: userRow.role as 'user' | 'admin',
+            role: userRow.role as 'user' | 'creator' | 'admin',
             status: userRow.status as 'active' | 'banned',
             expiresAt: userRow.expires_at !== null ? Number(userRow.expires_at) : undefined
         };
@@ -120,7 +120,7 @@ export class AuthService {
             avatarUrl: signAvatarUrl(row.avatarUrl) || undefined,
             createdAt: Number(row.createdAt),
             hasSeenAnnouncement: Boolean(row.hasSeenAnnouncement),
-            role: row.role as 'user' | 'admin',
+            role: row.role as 'user' | 'creator' | 'admin',
             status: row.status as 'active' | 'banned',
             expiresAt: row.expiresAt !== null ? Number(row.expiresAt) : undefined
         } as User;

@@ -16,6 +16,7 @@ import {
 } from '../utils/textSlotHelper';
 import { STICKER_ASSETS } from './StickerAssets';
 import { useAssetStore } from '../store/useAssetStore';
+import { CanvaSelectionFrame } from '../features/editor/components/CanvaSelectionFrame';
 
 interface BookRendererProps {
     page: Page;
@@ -26,6 +27,7 @@ interface BookRendererProps {
     book?: Book;           // 完整书籍信息，用于封面渲染
     side?: 'left' | 'right'; // 指定左右页以渲染物理阴影
     readOnly?: boolean; // 新增：是否只读模式
+    isCanvas?: boolean; // 新增：是否为编辑器画布模式
 }
 
 /**
@@ -42,6 +44,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
     book,
     side,
     readOnly = false,
+    isCanvas = false,
 }) => {
     const editorMode = useBookStore(state => state.editorMode);
     const updatePage = useBookStore(state => state.updatePage);
@@ -55,7 +58,16 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 
     // 拖动临时状态和选中状态
     const [dragState, setDragState] = useState<{ id: string; x: number; y: number } | null>(null);
-    const [activeStickerId, setActiveStickerId] = useState<string | null>(null);
+    const activeStickerEdit = useBookStore(state => state.activeStickerEdit);
+    const setActiveStickerEdit = useBookStore(state => state.setActiveStickerEdit);
+    const activeStickerId = activeStickerEdit?.pageId === page.id ? activeStickerEdit.stickerId : null;
+    const setActiveStickerId = (id: string | null) => {
+        if (id) {
+            setActiveStickerEdit({ chapterId: page.id, pageId: page.id, stickerId: id });
+        } else {
+            setActiveStickerEdit(null);
+        }
+    };
     const [snapLines, setSnapLines] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
     // 根据 pageSize 获取实际物理尺寸
@@ -366,6 +378,50 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
         updatePage(activeChapter.id, page.id, { content: updatedContent });
     };
 
+    // 旋转贴纸的鼠标拖动逻辑
+    const handleStickerRotateStart = (e: React.MouseEvent, dec: Decoration) => {
+        if (readOnly || editorMode !== 'select') return;
+        e.stopPropagation();
+        e.preventDefault();
+        
+        setActiveStickerId(dec.id);
+
+        const stickerElement = document.querySelector(`[data-element-id="${dec.id}"]`);
+        if (!stickerElement) return;
+
+        const rect = stickerElement.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const startAngleRad = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+        const startAngleDeg = startAngleRad * (180 / Math.PI);
+        const initialRotate = dec.rotate || 0;
+        
+        const angleOffset = startAngleDeg - initialRotate;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const currentAngleRad = Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX);
+            const currentAngleDeg = currentAngleRad * (180 / Math.PI);
+            
+            let newRotate = Math.round(currentAngleDeg - angleOffset);
+            newRotate = (newRotate % 360 + 360) % 360;
+
+            const newDecorations = decorations.map(d =>
+                d.id === dec.id ? { ...d, rotate: newRotate } : d
+            );
+            const updatedContent = updatePageDecorations(page.content, newDecorations);
+            updatePage(activeChapter.id, page.id, { content: updatedContent });
+        };
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
     const handlePageClick = () => {
         setActiveStickerId(null);
     };
@@ -535,6 +591,8 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                     return (
                         <div
                             key={dec.id}
+                            data-element-id={dec.id}
+                            data-element-type="sticker"
                             style={{
                                 position: 'absolute',
                                 left: `${x}%`,
@@ -569,9 +627,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                                     return {};
                                 })())
                             }}
-                            className={`z-[20] select-none ${
-                                isSelected ? 'ring-2 ring-indigo-500 ring-offset-1 rounded-sm' : ''
-                            }`}
+                            className="z-[20] select-none"
                             onMouseDown={(e) => handleStickerMouseDown(e, dec)}
                             onClick={(e) => e.stopPropagation()}
                         >
@@ -646,50 +702,14 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                                 return dec.content;
                             })()}
 
-                            {/* 浮动调节工具条 */}
-                            {!readOnly && editorMode === 'select' && isSelected && !isDragging && (
-                                <div 
-                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-[30] flex items-center bg-slate-900/95 backdrop-blur-sm text-white rounded-md shadow-xl border border-slate-700/60 p-0.5 gap-0.5 text-[8px] pointer-events-auto"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <button
-                                        onClick={() => handleAdjustSticker(dec.id, 'rotate', -15)}
-                                        className="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded text-gray-200 font-bold"
-                                        title="逆时针旋转"
-                                    >
-                                        ↺
-                                    </button>
-                                    <button
-                                        onClick={() => handleAdjustSticker(dec.id, 'rotate', 15)}
-                                        className="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded text-gray-200 font-bold"
-                                        title="顺时针旋转"
-                                    >
-                                        ↻
-                                    </button>
-                                    <div className="w-[1px] h-3 bg-slate-700/50" />
-                                    <button
-                                        onClick={() => handleAdjustSticker(dec.id, 'size', 3)}
-                                        className="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded text-gray-200 font-bold"
-                                        title="放大"
-                                    >
-                                        +
-                                    </button>
-                                    <button
-                                        onClick={() => handleAdjustSticker(dec.id, 'size', -3)}
-                                        className="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded text-gray-200 font-bold"
-                                        title="缩小"
-                                    >
-                                        -
-                                    </button>
-                                    <div className="w-[1px] h-3 bg-slate-700/50" />
-                                    <button
-                                        onClick={() => handleAdjustSticker(dec.id, 'delete', 0)}
-                                        className="w-5 h-5 flex items-center justify-center hover:bg-slate-800 rounded text-red-400 hover:text-red-300 font-bold"
-                                        title="删除贴纸"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
+                            {/* Canva 风格选中边框 */}
+                            {isSelected && (
+                                <CanvaSelectionFrame 
+                                    showCornerHandles={true} 
+                                    showEdgeHandles="none" 
+                                    showRotate={true}
+                                    onRotateStart={(e) => handleStickerRotateStart(e, dec)}
+                                />
                             )}
                         </div>
                     );
@@ -708,7 +728,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                 </div>
 
                 {/* 8. 物理书脊、折痕、叠纸阴影与纸张层叠厚度模拟 */}
-                {page.layout !== 'book-cover' && page.layout !== 'back-cover' && (
+                {!isCanvas && page.layout !== 'book-cover' && page.layout !== 'back-cover' && (
                     side === 'left' ? (
                         <>
                             <div className="absolute right-0 inset-y-0 w-16 bg-gradient-to-l from-black/[0.08] via-black/[0.03] to-transparent pointer-events-none z-[15] print:hidden" />

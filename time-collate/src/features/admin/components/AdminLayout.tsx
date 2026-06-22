@@ -70,7 +70,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     }, [fetchStats]);
 
     return (
-        <div className="flex h-screen bg-[#F8FAFC]">
+        <div className="flex h-screen bg-slate-50">
             {/* 使用管理后台专属侧边栏 */}
             <AdminSidebar />
 

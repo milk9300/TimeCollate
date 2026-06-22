@@ -138,7 +138,7 @@ export const ChapterList: React.FC<ChapterListProps> = ({
                         onClick={onBack}
                         className="mb-4 text-sm text-gray-500 hover:text-[#18181B] flex items-center gap-1 transition-colors cursor-pointer"
                     >
-                        ← 返回大厅
+                        ← 返回工作台
                     </button>
                 )}
                 <h2 className="text-2xl font-bold text-primary tracking-tight">{currentBook.title}</h2>

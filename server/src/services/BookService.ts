@@ -356,51 +356,85 @@ export class BookService {
                 }
             }
 
-            const legacyContentJson = {
-                slots: elements.slots || {},
-                atmosphere: elements.atmosphere || 'default',
-                fontFamily: elements.fontFamily || 'sans',
-                backgroundImage: elements.backgroundImage || null,
-                decorations: elements.decorations || [],
-                elementOverrides: elements.elementOverrides || {}
-            };
-            const content = JSON.stringify(legacyContentJson);
+            if (elements.version === '2.0') {
+                // 这是一个全新的 V2.0 自由画布页面，直接还原新版数据结构
+                const elementsList = (elements.elements || []).map((el: any) => {
+                    // 对图片组件进行 OSS 签名升级
+                    if (el.type === 'photo-frame' && el.photo) {
+                        const photoUrl = el.photo.ossKey
+                            ? getSignedUrl(el.photo.ossKey, 7200)
+                            : (el.photo.url && !el.photo.url.startsWith('blob:') && !el.photo.url.startsWith('data:') ? el.photo.url : '');
+                        return {
+                            ...el,
+                            photo: {
+                                ...el.photo,
+                                url: photoUrl
+                            }
+                        };
+                    }
+                    return el;
+                });
 
-            const photosList: Photo[] = [];
-            const photos = elements.photos || [];
-            for (const photo of photos) {
-                const photoUrl = photo.ossKey
-                    ? getSignedUrl(photo.ossKey, 7200)
-                    : (photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:') ? photo.url : '');
-                const thumbnailUrl = photo.ossKey
-                    ? getSignedUrl(photo.ossKey, 7200, 'image/resize,w_300/format,webp/quality,q_60')
-                    : (photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:') ? photo.url : '');
+                pages.push({
+                    id: page.id,
+                    bookId: page.book_id,
+                    pageTitle: page.page_title || '',
+                    isChapterStart: Boolean(page.is_chapter_start),
+                    content: '', // V2.0 下清空旧的正文文本
+                    layout: page.layout_type,
+                    sortOrder: Number(page.sort_order),
+                    photos: [], // V2.0 下旧版照片列表清空，由 elements 的 photo-frame 接管
+                    elements: elementsList,
+                    background: elements.background
+                });
+            } else {
+                // 传统 V1.0 页面还原逻辑
+                const legacyContentJson = {
+                    slots: elements.slots || {},
+                    atmosphere: elements.atmosphere || 'default',
+                    fontFamily: elements.fontFamily || 'sans',
+                    backgroundImage: elements.backgroundImage || null,
+                    decorations: elements.decorations || [],
+                    elementOverrides: elements.elementOverrides || {}
+                };
+                const content = JSON.stringify(legacyContentJson);
 
-                photosList.push({
-                    id: photo.id,
-                    url: photoUrl,
-                    thumbnailUrl: thumbnailUrl,
-                    caption: photo.caption || '',
-                    width: photo.width,
-                    height: photo.height,
-                    ossKey: photo.ossKey,
-                    scale: photo.scale !== null ? Number(photo.scale) : 1.0,
-                    xOffset: photo.xOffset !== null ? Number(photo.xOffset) : 50,
-                    yOffset: photo.yOffset !== null ? Number(photo.yOffset) : 50,
-                    assetId: photo.assetId
+                const photosList: Photo[] = [];
+                const photos = elements.photos || [];
+                for (const photo of photos) {
+                    const photoUrl = photo.ossKey
+                        ? getSignedUrl(photo.ossKey, 7200)
+                        : (photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:') ? photo.url : '');
+                    const thumbnailUrl = photo.ossKey
+                        ? getSignedUrl(photo.ossKey, 7200, 'image/resize,w_300/format,webp/quality,q_60')
+                        : (photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:') ? photo.url : '');
+
+                    photosList.push({
+                        id: photo.id,
+                        url: photoUrl,
+                        thumbnailUrl: thumbnailUrl,
+                        caption: photo.caption || '',
+                        width: photo.width,
+                        height: photo.height,
+                        ossKey: photo.ossKey,
+                        scale: photo.scale !== null ? Number(photo.scale) : 1.0,
+                        xOffset: photo.xOffset !== null ? Number(photo.xOffset) : 50,
+                        yOffset: photo.yOffset !== null ? Number(photo.yOffset) : 50,
+                        assetId: photo.assetId
+                    });
+                }
+
+                pages.push({
+                    id: page.id,
+                    bookId: page.book_id,
+                    pageTitle: page.page_title || '',
+                    isChapterStart: Boolean(page.is_chapter_start),
+                    content,
+                    layout: page.layout_type,
+                    sortOrder: Number(page.sort_order),
+                    photos: photosList,
                 });
             }
-
-            pages.push({
-                id: page.id,
-                bookId: page.book_id,
-                pageTitle: page.page_title || '',
-                isChapterStart: Boolean(page.is_chapter_start),
-                content,
-                layout: page.layout_type,
-                sortOrder: Number(page.sort_order),
-                photos: photosList,
-            });
         }
 
         // 获取实时统计与互动状态 (缓存优先)
@@ -516,10 +550,21 @@ export class BookService {
                 newOssKeys.add(book.coverOssKey);
             }
             for (const page of book.pages) {
-                for (const photo of page.photos) {
-                    if (photo.ossKey) {
-                        allOssKeys.add(photo.ossKey);
-                        newOssKeys.add(photo.ossKey);
+                if (page.elements && Array.isArray(page.elements)) {
+                    // V2.0 自由组件提取 ossKeys
+                    for (const el of page.elements) {
+                        if (el.type === 'photo-frame' && el.photo && el.photo.ossKey) {
+                            allOssKeys.add(el.photo.ossKey);
+                            newOssKeys.add(el.photo.ossKey);
+                        }
+                    }
+                } else if (page.photos) {
+                    // V1.0 照片提取 ossKeys
+                    for (const photo of page.photos) {
+                        if (photo.ossKey) {
+                            allOssKeys.add(photo.ossKey);
+                            newOssKeys.add(photo.ossKey);
+                        }
                     }
                 }
             }
@@ -538,78 +583,133 @@ export class BookService {
             // 4. 遍历插入页面，并构建 elements JSON
             for (let pi = 0; pi < book.pages.length; pi++) {
                 const page = book.pages[pi];
+                let elementsJson: any;
 
-                let parsedContent: any = {};
-                if (page.content) {
-                    try {
-                        parsedContent = typeof page.content === 'string' ? JSON.parse(page.content) : page.content;
-                    } catch (e) {
-                        parsedContent = {
-                            slots: {
-                                'page-content': { content: page.content },
-                                'default': { content: page.content }
+                if (page.elements && Array.isArray(page.elements)) {
+                    // 这是一个全新的 V2.0 画布页面
+                    const processedElements = [];
+                    for (const el of page.elements) {
+                        const cloneEl = { ...el };
+                        if (cloneEl.type === 'photo-frame' && cloneEl.photo) {
+                            let photoUrl = cloneEl.photo.url;
+                            if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
+                                photoUrl = '';
                             }
-                        };
-                    }
-                }
 
-                const processedPhotos = [];
-                for (const photo of page.photos) {
-                    let photoUrl = photo.url;
-                    if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
-                        photoUrl = '';
+                            let assetId = cloneEl.photo.assetId || (cloneEl.photo.ossKey ? registeredAssetIds.get(cloneEl.photo.ossKey) : undefined);
+                            if (!assetId && cloneEl.photo.ossKey) {
+                                assetId = uuidv4();
+                                const now = Date.now();
+                                const defaultName = cloneEl.photo.caption || '上传照片';
+                                const defaultMeta = JSON.stringify({
+                                    originalName: defaultName,
+                                    mimeType: 'image/jpeg',
+                                    width: cloneEl.photo.width || null,
+                                    height: cloneEl.photo.height || null
+                                });
+
+                                await connection.query(
+                                    `INSERT INTO assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
+                                     VALUES (?, NULL, ?, 'photo', ?, '', NULL, ?, 0, ?, ?, ?, ?)`,
+                                    [assetId, defaultName, book.userId, cloneEl.photo.ossKey, cloneEl.photo.width || null, cloneEl.photo.height || null, defaultMeta, now]
+                                );
+
+                                await connection.query(
+                                    `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
+                                    [uuidv4(), assetId]
+                                );
+
+                                registeredAssetIds.set(cloneEl.photo.ossKey, assetId);
+                            }
+
+                            cloneEl.photo = {
+                                ...cloneEl.photo,
+                                url: photoUrl,
+                                assetId
+                            };
+                        }
+                        processedElements.push(cloneEl);
                     }
 
-                    let assetId = photo.assetId || (photo.ossKey ? registeredAssetIds.get(photo.ossKey) : undefined);
-                    if (!assetId && photo.ossKey) {
-                        assetId = uuidv4();
-                        const now = Date.now();
-                        const defaultName = photo.caption || '上传照片';
-                        const defaultMeta = JSON.stringify({
-                            originalName: defaultName,
-                            mimeType: 'image/jpeg',
+                    elementsJson = {
+                        version: "2.0",
+                        background: page.background || { color: '#FFFFFF' },
+                        elements: processedElements
+                    };
+                } else {
+                    // 传统 V1.0 页面还原逻辑
+                    let parsedContent: any = {};
+                    if (page.content) {
+                        try {
+                            parsedContent = typeof page.content === 'string' ? JSON.parse(page.content) : page.content;
+                        } catch (e) {
+                            parsedContent = {
+                                slots: {
+                                    'page-content': { content: page.content },
+                                    'default': { content: page.content }
+                                }
+                            };
+                        }
+                    }
+
+                    const processedPhotos = [];
+                    for (const photo of page.photos) {
+                        let photoUrl = photo.url;
+                        if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
+                            photoUrl = '';
+                        }
+
+                        let assetId = photo.assetId || (photo.ossKey ? registeredAssetIds.get(photo.ossKey) : undefined);
+                        if (!assetId && photo.ossKey) {
+                            assetId = uuidv4();
+                            const now = Date.now();
+                            const defaultName = photo.caption || '上传照片';
+                            const defaultMeta = JSON.stringify({
+                                originalName: defaultName,
+                                mimeType: 'image/jpeg',
+                                width: photo.width || null,
+                                height: photo.height || null
+                            });
+
+                            await connection.query(
+                                `INSERT INTO assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
+                                 VALUES (?, NULL, ?, 'photo', ?, '', NULL, ?, 0, ?, ?, ?, ?)`,
+                                [assetId, defaultName, book.userId, photo.ossKey, photo.width || null, photo.height || null, defaultMeta, now]
+                            );
+
+                            await connection.query(
+                                `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
+                                [uuidv4(), assetId]
+                            );
+
+                            registeredAssetIds.set(photo.ossKey, assetId);
+                        }
+
+                        processedPhotos.push({
+                            id: photo.id || uuidv4(),
+                            url: photoUrl,
+                            caption: photo.caption || '',
                             width: photo.width || null,
-                            height: photo.height || null
+                            height: photo.height || null,
+                            ossKey: photo.ossKey || undefined,
+                            scale: photo.scale !== undefined ? Number(photo.scale) : 1.0,
+                            xOffset: photo.xOffset !== undefined ? Number(photo.xOffset) : 50,
+                            yOffset: photo.yOffset !== undefined ? Number(photo.yOffset) : 50,
+                            assetId
                         });
-
-                        await connection.query(
-                            `INSERT INTO assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
-                             VALUES (?, NULL, ?, 'photo', ?, '', NULL, ?, 0, ?, ?, ?, ?)`,
-                            [assetId, defaultName, book.userId, photo.ossKey, photo.width || null, photo.height || null, defaultMeta, now]
-                        );
-
-                        await connection.query(
-                            `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
-                            [uuidv4(), assetId]
-                        );
-
-                        registeredAssetIds.set(photo.ossKey, assetId);
                     }
 
-                    processedPhotos.push({
-                        id: photo.id || uuidv4(),
-                        url: photoUrl,
-                        caption: photo.caption || '',
-                        width: photo.width || null,
-                        height: photo.height || null,
-                        ossKey: photo.ossKey || undefined,
-                        scale: photo.scale !== undefined ? Number(photo.scale) : 1.0,
-                        xOffset: photo.xOffset !== undefined ? Number(photo.xOffset) : 50,
-                        yOffset: photo.yOffset !== undefined ? Number(photo.yOffset) : 50,
-                        assetId
-                    });
+                    elementsJson = {
+                        version: "1.0",
+                        slots: parsedContent.slots || {},
+                        atmosphere: parsedContent.atmosphere || 'default',
+                        fontFamily: parsedContent.fontFamily || 'sans',
+                        backgroundImage: parsedContent.backgroundImage || null,
+                        decorations: parsedContent.decorations || [],
+                        elementOverrides: parsedContent.elementOverrides || {},
+                        photos: processedPhotos
+                    };
                 }
-
-                const elementsJson = {
-                    version: "1.0",
-                    slots: parsedContent.slots || {},
-                    atmosphere: parsedContent.atmosphere || 'default',
-                    fontFamily: parsedContent.fontFamily || 'sans',
-                    backgroundImage: parsedContent.backgroundImage || null,
-                    decorations: parsedContent.decorations || [],
-                    elementOverrides: parsedContent.elementOverrides || {},
-                    photos: processedPhotos
-                };
 
                 let pageType = 'content';
                 if (page.layout === 'book-cover') {
@@ -1140,16 +1240,58 @@ export class BookService {
                 }
 
                 if (makeTemplate) {
-                    // 模板模式下，对内容数据执行数据净化：清理用户文本槽内容，删除自定义上传的背景图，以及清空关联照片
-                    if (elements.slots) {
-                        for (const key of Object.keys(elements.slots)) {
-                            if (elements.slots[key]) {
-                                elements.slots[key].content = '';
+                    // 模板模式下，对内容数据进行脱敏与净化
+                    if (elements.version === '2.0') {
+                        // V2.0 页面净化
+                        if (elements.elements && Array.isArray(elements.elements)) {
+                            elements.elements = elements.elements.map((el: any) => {
+                                const cloneEl = { ...el };
+                                if (cloneEl.type === 'photo-frame') {
+                                    cloneEl.photo = null;
+                                } else if (cloneEl.type === 'text') {
+                                    cloneEl.textConfig = {
+                                        ...cloneEl.textConfig,
+                                        content: getPlaceholderByRole(cloneEl.role)
+                                    };
+                                }
+                                return cloneEl;
+                            });
+                        }
+                        if (elements.background) {
+                            if (!elements.background.isSystemTheme) {
+                                delete elements.background.backgroundImage;
                             }
                         }
+                    } else {
+                        // V1.0 页面净化
+                        if (elements.slots) {
+                            for (const key of Object.keys(elements.slots)) {
+                                if (elements.slots[key]) {
+                                    elements.slots[key].content = '';
+                                }
+                            }
+                        }
+                        delete elements.backgroundImage;
+                        elements.photos = [];
                     }
-                    delete elements.backgroundImage;
-                    elements.photos = [];
+                } else {
+                    // 非模板复制模式下（如套用模板为新书，或者复制书籍）
+                    // 必须重新生成自由组件元素的 UUID，防止新书与旧书的组件实例 ID 冲突
+                    if (elements.version === '2.0' && elements.elements && Array.isArray(elements.elements)) {
+                        const idMapping = new Map<string, string>();
+                        // 1. 生成新 ID 映射关系
+                        elements.elements.forEach((el: any) => {
+                            const newElId = uuidv4();
+                            idMapping.set(el.id, newElId);
+                            el.id = newElId;
+                        });
+                        // 2. 依据映射关系重构建组 (groupId) 关联
+                        elements.elements.forEach((el: any) => {
+                            if (el.groupId && idMapping.has(el.groupId)) {
+                                el.groupId = idMapping.get(el.groupId);
+                            }
+                        });
+                    }
                 }
 
                 await connection.query(
@@ -1166,6 +1308,13 @@ export class BookService {
                         JSON.stringify(elements)
                     ]
                 );
+            }
+
+            // 本地辅助函数，用以在模板模式下脱敏占位
+            function getPlaceholderByRole(role?: string): string {
+                if (role === 'chapter-title') return '章节标题';
+                if (role === 'chapter-date') return '2026.06.22';
+                return '双击输入此处的感悟文字...';
             }
 
             await connection.commit();

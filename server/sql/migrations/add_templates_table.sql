@@ -1,8 +1,24 @@
 -- TimeCollate 动态模版表初始化与迁移脚本
 USE timecollate;
 
--- 1. 修改 pages 表中的 layout 属性，使其支持动态模板的 UUID
-ALTER TABLE pages MODIFY COLUMN layout VARCHAR(36) DEFAULT 'grid' COMMENT '布局类型/模板ID';
+-- 1. 修改 pages 表中的 layout 属性，使其支持动态模板的 UUID (若列已被删除则忽略)
+SET @layout_exists = (
+    SELECT COUNT(*) 
+    FROM information_schema.columns 
+    WHERE table_schema = DATABASE() 
+      AND table_name = 'pages' 
+      AND column_name = 'layout'
+);
+
+SET @alter_layout_stmt = IF(
+    @layout_exists > 0,
+    'ALTER TABLE pages MODIFY COLUMN layout VARCHAR(36) DEFAULT \'grid\' COMMENT \'布局类型/模板ID\'',
+    'SELECT 1'
+);
+
+PREPARE stmt_layout FROM @alter_layout_stmt;
+EXECUTE stmt_layout;
+DEALLOCATE PREPARE stmt_layout;
 
 -- 2. 创建动态模板表
 CREATE TABLE IF NOT EXISTS book_templates (

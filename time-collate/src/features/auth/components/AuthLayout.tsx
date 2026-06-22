@@ -136,13 +136,13 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
         const pagesCount = 7;
         const meshes: THREE.Mesh[] = [];
         
-        // 纸张颜色调色板 (柔和蓝紫靛青与暖白)
+        // 纸张颜色调色板 (新中式现代人文配色)
         const colors = [
-            new THREE.Color('#e0e7ff'), // Indigo 100
-            new THREE.Color('#f3e8ff'), // Purple 100
-            new THREE.Color('#fafaf9'), // Stone 50
-            new THREE.Color('#e0f2fe'), // Sky 100
-            new THREE.Color('#c7d2fe')  // Indigo 200
+            new THREE.Color('#FDFBF7'), // 宣纸白
+            new THREE.Color('#C5A059'), // 暖麦皮
+            new THREE.Color('#3A4454'), // 黛蓝
+            new THREE.Color('#2C3539'), // 松烟墨
+            new THREE.Color('#EEEBE5')  // 老旧宣纸灰
         ];
 
         const materials: THREE.ShaderMaterial[] = [];
@@ -165,7 +165,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
                     uTime: { value: 0 },
                     uBaseColor: { value: color },
                     uLightPos: { value: lightPos.current },
-                    uLightColor: { value: new THREE.Color('#a78bfa') }, // 品牌亮紫色高光
+                    uLightColor: { value: new THREE.Color('#C5A059') }, // 品牌温暖金色高光
                     uOpacity: { value: opacity }
                 }
             });
@@ -300,10 +300,10 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
     }, []);
 
     return (
-        <div className="relative min-h-screen w-full overflow-hidden bg-[#F8F9FD] font-['Outfit',_sans-serif]">
+        <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 font-['Outfit',_sans-serif]">
             {/* 首屏渐变加载占位图 */}
             <div 
-                className={`absolute inset-0 bg-gradient-to-tr from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] transition-opacity duration-1000 ease-out z-30 ${
+                className={`absolute inset-0 bg-gradient-to-tr from-[#FDFBF7] via-[#F7F4EF] to-[#E0DDD6] transition-opacity duration-1000 ease-out z-30 ${
                     isReady ? 'opacity-0 pointer-events-none' : 'opacity-100'
                 }`} 
             />
@@ -312,7 +312,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
             <div ref={containerRef} className="fixed inset-0 w-full h-full z-0 pointer-events-none" />
 
             {/* 图层二：遮罩调色层 */}
-            <div className="fixed inset-0 bg-gradient-to-br from-[#4f46e5]/10 via-transparent to-[#7c3aed]/10 mix-blend-overlay pointer-events-none z-10" />
+            <div className="fixed inset-0 bg-gradient-to-br from-[#C5A059]/10 via-transparent to-[#3A4454]/10 mix-blend-overlay pointer-events-none z-10" />
 
             {/* 图层三：DOM 交互层 (左右分栏布局) */}
             <div className="relative z-20 w-full min-h-screen flex flex-col lg:flex-row justify-between px-6 md:px-16 lg:px-32 max-w-[1600px] mx-auto overflow-hidden">
@@ -321,15 +321,15 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
                 <div className="hidden lg:block flex-1 text-left pr-12 pointer-events-none my-auto">
                     <div className="flex items-center gap-4 mb-8">
                         <img src={logoImg} alt="Logo" className="w-20 h-20 object-contain drop-shadow-lg" />
-                        <span className="text-4xl font-black text-gray-900 tracking-tight">拾光集</span>
+                        <span className="text-4xl font-black text-slate-900 tracking-tight">拾光集</span>
                     </div>
-                    <h1 className="text-5xl xl:text-6xl font-black text-gray-900 mb-6 drop-shadow-md tracking-tight leading-tight">
+                    <h1 className="text-5xl xl:text-6xl font-black text-slate-900 mb-6 drop-shadow-md tracking-tight leading-tight">
                         记录时光，<br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-indigo-600">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#3A4454] to-[#C5A059]">
                             珍藏每一份感动。
                         </span>
                     </h1>
-                    <p className="text-xl text-gray-600 font-medium max-w-lg leading-relaxed drop-shadow-sm">
+                    <p className="text-xl text-slate-650 font-medium max-w-lg leading-relaxed drop-shadow-sm">
                         时光笔记为您提供无边框的数字记忆档案馆。通过前沿 3D 视觉，让您的每一份珍贵记忆都能在时空中鲜活流转。
                     </p>
                 </div>

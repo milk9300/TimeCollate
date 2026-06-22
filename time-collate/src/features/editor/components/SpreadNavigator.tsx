@@ -37,12 +37,8 @@ import type { Page } from '../../../types';
 interface SpreadNavigatorProps {
     activeChapterId: string | null;
     activePageId: string | null;
-    isEditingCover: boolean;
-    isEditingPreface: boolean;
     onSelectChapter: (chapterId: string) => void;
     onSelectPage: (chapterId: string, pageId: string) => void;
-    onSelectCover: () => void;
-    onSelectPreface: () => void;
     onUnlock?: () => void;
 }
 
@@ -372,6 +368,19 @@ const SortableChapterItem: React.FC<SortableChapterItemProps> = ({
                                                 />
                                             );
                                         })}
+
+                                        {/* 新建页按钮 */}
+                                        <button
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                const newPageId = await addPageToChapter(chapter.id);
+                                                if (newPageId) onSelectPage(chapter.id, newPageId);
+                                            }}
+                                            className="w-full text-left pl-7 pr-1.5 py-1 border border-dashed border-gray-250/35 hover:border-indigo-400 hover:bg-indigo-50/10 text-gray-400 hover:text-indigo-650 transition-all rounded-lg flex items-center gap-1.5 cursor-pointer mt-1"
+                                        >
+                                            <Plus size={11} className="stroke-[2.5]" />
+                                            <span className="text-[9px] font-bold">新建页面</span>
+                                        </button>
                                     </div>
                                 </SortableContext>
                             </DndContext>
@@ -399,12 +408,9 @@ const SortableChapterItem: React.FC<SortableChapterItemProps> = ({
 export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
     activeChapterId,
     activePageId,
-    isEditingCover,
-    isEditingPreface,
     onSelectChapter,
     onSelectPage,
-    onSelectCover,
-    onSelectPreface
+    onUnlock
 }) => {
     const { 
         currentBook, 
@@ -416,8 +422,17 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
         updateBookSettings
     } = useBookStore();
 
-    // 折叠状态（图标栏模式）
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const editorScope = useBookStore(state => state.editorScope);
+    const setEditorScope = useBookStore(state => state.setEditorScope);
+
+    const isEditingCover = editorScope === 'cover';
+
+    const onSelectCover = () => {
+        setEditorScope('cover');
+    };
+
+    // 折叠状态（图标栏模式）- 默认收起目录面板
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     // 虚拟章节列表
     const chapters = React.useMemo(() => {
@@ -427,7 +442,6 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
 
     // 右键上下文菜单 ID
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-    const [showAddMenu, setShowAddMenu] = useState(false);
     
     // 章节手风琴状态
     const [collapsedChapters, setCollapsedChapters] = useState<Record<string, boolean>>({});
@@ -454,29 +468,6 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
     );
 
     if (!currentBook) return null;
-
-    const handleAddPageToCurrent = async () => {
-        let targetChapterId = activeChapterId;
-        if (!targetChapterId && chapters.length > 0) {
-            targetChapterId = chapters[0].id;
-        } else if (chapters.length === 0) {
-            await addChapter("第一章：起航");
-            const updatedBook = useBookStore.getState().currentBook;
-            if (updatedBook && updatedBook.pages) {
-                const virtualChaps = getVirtualChapters(updatedBook.pages);
-                if (virtualChaps.length > 0) {
-                    targetChapterId = virtualChaps[0].id;
-                }
-            }
-        }
-
-        if (targetChapterId) {
-            const newPageId = await addPageToChapter(targetChapterId);
-            if (newPageId) {
-                onSelectPage(targetChapterId, newPageId);
-            }
-        }
-    };
 
     const handleDeletePageClick = async (chapterId: string, pageId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -538,7 +529,7 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                 {/* 展开按钮 */}
                 <button
                     onClick={() => setIsCollapsed(false)}
-                    className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors border border-indigo-200/40"
+                    className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-650 rounded-lg transition-colors border border-indigo-200/40"
                     title="展开目录面板"
                 >
                     <ChevronRight size={15} />
@@ -546,56 +537,45 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
 
                 <div className="w-6 h-[1px] bg-gray-200" />
 
-                {/* 封面快捷键 */}
-                <button
-                    onClick={onSelectCover}
-                    className={`p-2 rounded-xl border transition-all ${
-                        isEditingCover 
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
-                            : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200/80'
-                    }`}
-                    title="书籍封面"
-                >
-                    <BookOpen size={14} />
-                </button>
-
-                {/* 序言快捷键 */}
-                {currentBook?.showPreface !== false && (
-                    <button
-                        onClick={onSelectPreface}
-                        className={`p-2 rounded-xl border transition-all ${
-                            isEditingPreface 
-                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
-                                : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200/80'
-                        }`}
-                        title="序言"
-                    >
-                        <FileText size={14} />
-                    </button>
+                {editorScope === 'cover' ? (
+                    <>
+                        {/* 封面快捷键 */}
+                        <button
+                            onClick={onSelectCover}
+                            className={`p-2 rounded-xl border transition-all ${
+                                isEditingCover 
+                                    ? 'bg-indigo-650 text-white border-indigo-650 shadow-md' 
+                                    : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-250/80'
+                            }`}
+                            title="书籍封面"
+                        >
+                            <BookOpen size={14} />
+                        </button>
+                    </>
+                ) : (
+                    /* 章节编号环与序言快捷键 */
+                    <div className="flex flex-col gap-2.5 overflow-y-auto w-full items-center custom-scrollbar flex-1">
+                        {chapters.map((chapter, idx) => {
+                            const isChapterActive = activeChapterId === chapter.id && !isEditingCover;
+                            return (
+                                <button
+                                    key={chapter.id}
+                                    onClick={() => {
+                                        onSelectChapter(chapter.id);
+                                    }}
+                                    className={`w-8 h-8 rounded-full border flex items-center justify-center text-[10px] font-black transition-all ${
+                                        isChapterActive
+                                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-extrabold shadow-sm'
+                                            : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200/60'
+                                    }`}
+                                    title={chapter.title || '未命名章节'}
+                                >
+                                    {(idx + 1).toString()}
+                                </button>
+                            );
+                        })}
+                    </div>
                 )}
-
-                {/* 章节编号环 */}
-                <div className="flex flex-col gap-2.5 overflow-y-auto w-full items-center custom-scrollbar flex-1">
-                    {chapters.map((chapter, idx) => {
-                        const isChapterActive = activeChapterId === chapter.id && !isEditingCover && !isEditingPreface;
-                        return (
-                            <button
-                                key={chapter.id}
-                                onClick={() => {
-                                    onSelectChapter(chapter.id);
-                                }}
-                                className={`w-8 h-8 rounded-full border flex items-center justify-center text-[10px] font-black transition-all ${
-                                    isChapterActive
-                                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-extrabold shadow-sm'
-                                        : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-200/60'
-                                }`}
-                                title={chapter.title || '未命名章节'}
-                            >
-                                {(idx + 1).toString()}
-                            </button>
-                        );
-                    })}
-                </div>
             </div>
         );
     }
@@ -615,61 +595,15 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
 
             {/* Header: 书名与统计信息 */}
             <div className="p-4 border-b border-gray-100 bg-white flex flex-col gap-2.5 sticky top-0 z-10">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                        <Layers size={14} className="text-indigo-600 flex-shrink-0" />
-                        <input
-                            type="text"
-                            value={currentBook.title}
-                            onChange={(e) => updateBookSettings({ title: e.target.value })}
-                            className="text-[12px] font-black text-gray-800 border-b border-transparent hover:border-gray-200 focus:border-indigo-500 focus:outline-none bg-transparent transition-colors px-0.5 truncate flex-1 min-w-0"
-                            placeholder="目录设计"
-                        />
-                    </div>
-
-                    {/* 新建章节/页面浮窗菜单 */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowAddMenu(!showAddMenu)}
-                            className="p-1 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-[10px] font-bold flex items-center justify-center border border-gray-200"
-                            title="新建章节/页面"
-                        >
-                            <Plus size={11} className="stroke-[3.5]" />
-                        </button>
-                        {showAddMenu && (
-                            <>
-                                <div 
-                                    className="fixed inset-0 z-20" 
-                                    onClick={() => setShowAddMenu(false)}
-                                />
-                                <div className="absolute right-0 mt-1.5 w-28 bg-white border border-gray-200/80 rounded-xl shadow-xl py-1.5 z-30 animate-in fade-in slide-in-from-top-1 duration-150">
-                                    <button
-                                        onClick={async () => {
-                                            setShowAddMenu(false);
-                                            const title = window.prompt("请输入新章节的标题：", `章节 ${chapters.length + 1}`);
-                                            if (title && title.trim()) {
-                                                await addChapter(title.trim());
-                                            }
-                                        }}
-                                        className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-gray-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
-                                    >
-                                        <FolderOpen size={11} className="text-gray-400" />
-                                        新建章节
-                                    </button>
-                                    <button
-                                        onClick={async () => {
-                                            setShowAddMenu(false);
-                                            await handleAddPageToCurrent();
-                                        }}
-                                        className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-gray-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors border-t border-gray-50"
-                                    >
-                                        <FileText size={11} className="text-gray-400" />
-                                        新建页面
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <Layers size={14} className="text-indigo-600 flex-shrink-0" />
+                    <input
+                        type="text"
+                        value={currentBook.title}
+                        onChange={(e) => updateBookSettings({ title: e.target.value })}
+                        className="text-[12px] font-black text-gray-800 border-b border-transparent hover:border-gray-200 focus:border-indigo-500 focus:outline-none bg-transparent transition-colors px-0.5 truncate flex-1 min-w-0"
+                        placeholder="目录设计"
+                    />
                 </div>
 
                 {/* 页面及章节统计：符合手写稿 */}
@@ -688,96 +622,89 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
 
             {/* 可滚动目录树 */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-                
-                {/* 1. 0. 封面 条目 */}
-                <div
-                    onClick={onSelectCover}
-                    className={`pl-3 pr-2 py-2 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-between group ${
-                        isEditingCover
-                            ? 'border-indigo-500/80 bg-indigo-50/15 text-indigo-950 font-bold shadow-sm'
-                            : 'border-gray-200/50 bg-white hover:bg-gray-50/50 hover:border-gray-300 text-gray-700'
-                    }`}
-                >
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-gray-400 group-hover:text-gray-600 font-mono">□ 0.</span>
-                        <span className="text-[11px] font-bold">封面</span>
-                    </div>
-                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 group-hover:bg-indigo-100/40 group-hover:text-indigo-600 transition-colors">
-                        Cover
-                    </span>
-                </div>
-
-                {/* 1.5. 00. 序言 条目 */}
-                {currentBook?.showPreface !== false && (
-                    <div
-                        onClick={onSelectPreface}
-                        className={`pl-3 pr-2 py-2 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-between group ${
-                            isEditingPreface
-                                ? 'border-indigo-500/80 bg-indigo-50/15 text-indigo-950 font-bold shadow-sm'
-                                : 'border-gray-200/50 bg-white hover:bg-gray-50/50 hover:border-gray-300 text-gray-700'
-                        }`}
-                    >
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 group-hover:text-gray-600 font-mono">□ 0.5</span>
-                            <span className="text-[11px] font-bold">序言</span>
+                {editorScope === 'cover' ? (
+                    <>
+                        {/* 1. 0. 封面 条目 */}
+                        <div
+                            onClick={onSelectCover}
+                            className={`pl-3 pr-2 py-2 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-between group ${
+                                isEditingCover
+                                    ? 'border-indigo-500/80 bg-indigo-50/15 text-indigo-950 font-bold shadow-sm'
+                                    : 'border-gray-200/50 bg-white hover:bg-gray-50/50 hover:border-gray-300 text-gray-700'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 group-hover:text-gray-600 font-mono">□ 0.</span>
+                                <span className="text-[11px] font-bold">封面</span>
+                            </div>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 group-hover:bg-indigo-100/40 group-hover:text-indigo-600 transition-colors">
+                                Cover
+                            </span>
                         </div>
-                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 group-hover:bg-indigo-100/40 group-hover:text-indigo-600 transition-colors">
-                            Preface
-                        </span>
-                    </div>
-                )}
-
-                <div className="w-full h-[1px] bg-gray-100/60" />
-
-                {/* 2. 章节分组 */}
-                {chapters.length > 0 ? (
-                    <div className="space-y-3">
-                        <DndContext
-                            sensors={chapterSensors}
-                            collisionDetection={closestCenter}
-                            onDragEnd={handleChapterDragEnd}
-                        >
-                            <SortableContext
-                                items={chapters.map(c => c.id)}
-                                strategy={verticalListSortingStrategy}
-                            >
-                                {chapters.map((chapter, chapterIdx) => {
-                                    const isChapterActive = activeChapterId === chapter.id && !isEditingCover && !isEditingPreface;
-
-                                    return (
-                                        <SortableChapterItem
-                                            key={chapter.id}
-                                            chapter={chapter}
-                                            chapterIdx={chapterIdx}
-                                            isChapterActive={isChapterActive}
-                                            activePageId={activePageId}
-                                            isEditingCover={isEditingCover}
-                                            pageIndexMap={pageIndexMap}
-                                            activeMenuId={activeMenuId}
-                                            setActiveMenuId={setActiveMenuId}
-                                            handleDeletePageClick={handleDeletePageClick}
-                                            handleDuplicatePageClick={handleDuplicatePageClick}
-                                            onSelectChapter={onSelectChapter}
-                                            onSelectPage={onSelectPage}
-                                            collapsedChapters={collapsedChapters}
-                                            toggleChapterCollapse={toggleChapterCollapse}
-                                        />
-                                    );
-                                })}
-                            </SortableContext>
-                        </DndContext>
-                    </div>
+                    </>
                 ) : (
-                    <div className="text-center py-8 text-gray-400 flex flex-col items-center justify-center gap-2">
-                        <FileText size={20} className="stroke-[1.5] text-gray-300" />
-                        <span className="text-[10px] font-bold">暂无回忆章节</span>
+                    /* 2. 章节分组与序言条目 */
+                    <div className="space-y-3">
+
+
+                        {chapters.length > 0 ? (
+                            <DndContext
+                                sensors={chapterSensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleChapterDragEnd}
+                            >
+                                <SortableContext
+                                    items={chapters.map(c => c.id)}
+                                    strategy={verticalListSortingStrategy}
+                                >
+                                    {chapters.map((chapter, chapterIdx) => {
+                                        const isChapterActive = activeChapterId === chapter.id && !isEditingCover;
+
+                                        return (
+                                            <SortableChapterItem
+                                                key={chapter.id}
+                                                chapter={chapter}
+                                                chapterIdx={chapterIdx}
+                                                isChapterActive={isChapterActive}
+                                                activePageId={activePageId}
+                                                isEditingCover={isEditingCover}
+                                                pageIndexMap={pageIndexMap}
+                                                activeMenuId={activeMenuId}
+                                                setActiveMenuId={setActiveMenuId}
+                                                handleDeletePageClick={handleDeletePageClick}
+                                                handleDuplicatePageClick={handleDuplicatePageClick}
+                                                onSelectChapter={onSelectChapter}
+                                                onSelectPage={onSelectPage}
+                                                collapsedChapters={collapsedChapters}
+                                                toggleChapterCollapse={toggleChapterCollapse}
+                                            />
+                                        );
+                                    })}
+                                </SortableContext>
+                            </DndContext>
+                        ) : (
+                            <div className="text-center py-8 text-gray-400 flex flex-col items-center justify-center gap-2">
+                                <FileText size={20} className="stroke-[1.5] text-gray-300" />
+                                <span className="text-[10px] font-bold">暂无回忆章节</span>
+                            </div>
+                        )}
+
+                        {/* 新建章节按钮 */}
                         <button
-                            onClick={async () => {
-                                await addChapter("新建回忆章节");
+                            onClick={async (e) => {
+                                e.stopPropagation();
+                                const title = window.prompt("请输入新章节的标题：", `章节 ${chapters.length + 1}`);
+                                if (title && title.trim()) {
+                                    const newChapId = await addChapter(title.trim());
+                                    if (newChapId) {
+                                        onSelectChapter(newChapId);
+                                    }
+                                }
                             }}
-                            className="mt-1 px-3 py-1 bg-indigo-600 text-white text-[9px] font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+                            className="w-full py-2 bg-white hover:bg-indigo-50/10 border border-dashed border-gray-200 hover:border-indigo-400 text-gray-500 hover:text-indigo-650 font-bold text-[10px] rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
                         >
-                            + 新增章节
+                            <Plus size={11} className="stroke-[2.5]" />
+                            <span>新建章节</span>
                         </button>
                     </div>
                 )}

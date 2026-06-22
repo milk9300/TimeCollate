@@ -61,7 +61,7 @@ export function BookCard({ book, onClick, onContextMenu, overlay, topRightAction
     const stats = getBookStats(book);
 
     return (
-        <div className="group relative w-full flex flex-col font-['Outfit',_sans-serif]">
+        <div className="group relative w-full max-w-[200px] sm:max-w-[220px] md:max-w-[240px] mx-auto flex flex-col font-['Outfit',_sans-serif]">
             {/* 悬浮时显示的上浮手账风数据卡片 (Tooltip) */}
             {showCommunityStats && !isTrash && (
                 <div className="absolute top-[102%] left-1/2 -translate-x-1/2 mt-2 w-44 p-3

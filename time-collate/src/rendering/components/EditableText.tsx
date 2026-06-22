@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useBookStore } from '../../store';
 import { updateSlotText, updateSlotStyle, getSlotStyle } from '../../utils/textSlotHelper';
+import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 import { 
     Bold, 
     Italic, 
@@ -189,7 +190,11 @@ export const EditableText: React.FC<EditableTextProps> = ({
     const currentAlign = slotStyle.textAlign || 'left';
 
     return (
-        <div className="relative group/text-slot">
+        <div 
+            className="relative group/text-slot"
+            data-element-id={slotId}
+            data-element-type="text"
+        >
             <div
                 ref={elementRef}
                 contentEditable={isEditing}
@@ -200,144 +205,24 @@ export const EditableText: React.FC<EditableTextProps> = ({
                 onKeyDown={handleKeyDown}
                 className={`${className} outline-none transition-all ${
                     isEditing
-                        ? 'bg-white text-gray-800 ring-2 ring-indigo-500 shadow-sm px-1.5 py-0.5 rounded min-w-[50px] z-30 cursor-text'
+                        ? 'bg-white text-gray-800 ring-2 ring-[#8b3dff] shadow-sm px-1.5 py-0.5 rounded min-w-[50px] z-30 cursor-text'
                         : isSelected
-                            ? 'ring-2 ring-indigo-500 bg-indigo-50/10 rounded px-1.5 py-0.5 cursor-pointer select-none'
-                            : 'hover:bg-primary/5 rounded px-1 -mx-1 cursor-pointer select-none hover:ring-1 hover:ring-dashed hover:ring-primary/40'
+                            ? 'bg-[#8b3dff]/5 rounded px-1.5 py-0.5 cursor-pointer select-none'
+                            : 'hover:bg-primary/5 rounded px-1 -mx-1 cursor-pointer select-none hover:ring-1 hover:ring-dashed hover:ring-[#8b3dff]/40'
                 }`}
-                style={style}
+                style={{
+                    ...style,
+                    textDecoration: slotStyle.textDecoration || (style?.textDecoration),
+                    fontFamily: slotStyle.fontFamily || (style?.fontFamily),
+                }}
                 title="单击选中，双击进行编辑"
             >
                 {isEditing ? localValue : displayValue}
             </div>
 
-            {/* Floating popover toolbar */}
+            {/* Canva 风格选中边框 */}
             {isSelected && !isEditing && (
-                <div 
-                    className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-40 flex items-center bg-slate-900/95 backdrop-blur-md text-white rounded-lg shadow-2xl border border-slate-700/50 p-1 gap-1 text-[9px] pointer-events-auto transition-all animate-fade-in whitespace-nowrap"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    {/* Font Size controls */}
-                    <button
-                        onClick={() => handleFontSizeChange('down')}
-                        className="p-1 hover:bg-slate-800 rounded transition-colors text-gray-300 font-bold"
-                        title="缩小字号"
-                    >
-                        A-
-                    </button>
-                    <span className="px-1 text-[9px] font-bold text-gray-400 font-mono select-none">
-                        {currentSize}pt
-                    </span>
-                    <button
-                        onClick={() => handleFontSizeChange('up')}
-                        className="p-1 hover:bg-slate-800 rounded transition-colors text-gray-300 font-bold"
-                        title="增大字号"
-                    >
-                        A+
-                    </button>
-
-                    <div className="w-[1px] h-3 bg-slate-800" />
-
-                    {/* Bold & Italic */}
-                    <button
-                        onClick={toggleBold}
-                        className={`p-1 rounded transition-colors ${currentWeight === 'bold' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800'}`}
-                        title="加粗"
-                    >
-                        <Bold size={10} />
-                    </button>
-                    <button
-                        onClick={toggleItalic}
-                        className={`p-1 rounded transition-colors ${currentItalic === 'italic' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800'}`}
-                        title="斜体"
-                    >
-                        <Italic size={10} />
-                    </button>
-
-                    <div className="w-[1px] h-3 bg-slate-800" />
-
-                    {/* Alignment */}
-                    <button
-                        onClick={() => handleAlignChange('left')}
-                        className={`p-1 rounded transition-colors ${currentAlign === 'left' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800'}`}
-                        title="居左"
-                    >
-                        <AlignLeft size={10} />
-                    </button>
-                    <button
-                        onClick={() => handleAlignChange('center')}
-                        className={`p-1 rounded transition-colors ${currentAlign === 'center' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800'}`}
-                        title="居中"
-                    >
-                        <AlignCenter size={10} />
-                    </button>
-                    <button
-                        onClick={() => handleAlignChange('right')}
-                        className={`p-1 rounded transition-colors ${currentAlign === 'right' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800'}`}
-                        title="居右"
-                    >
-                        <AlignRight size={10} />
-                    </button>
-
-                    <div className="w-[1px] h-3 bg-slate-800" />
-
-                    {/* Color Swatch Selector */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowColorPicker(!showColorPicker)}
-                            className={`p-1.5 rounded transition-colors ${showColorPicker ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-slate-800'} flex items-center justify-center`}
-                            title="选择颜色"
-                        >
-                            <span 
-                                className="w-2.5 h-2.5 rounded-full border border-white/20" 
-                                style={{ backgroundColor: slotStyle.color || '#1E293B' }}
-                            />
-                        </button>
-
-                        {showColorPicker && (
-                            <>
-                                <div className="fixed inset-0 z-50" onClick={() => setShowColorPicker(false)} />
-                                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700/60 rounded-lg p-1.5 flex gap-1.5 shadow-xl z-50 animate-in fade-in duration-100">
-                                    {[
-                                        { hex: '#1E293B', name: '深炭黑' },
-                                        { hex: '#4F46E5', name: '靛青蓝' },
-                                        { hex: '#059669', name: '艾草绿' },
-                                        { hex: '#D97706', name: '琥珀金' },
-                                        { hex: '#DC2626', name: '朱砂红' },
-                                        { hex: '#DB2777', name: '蔷薇粉' }
-                                    ].map((colorObj) => (
-                                        <button
-                                            key={colorObj.hex}
-                                            onClick={() => {
-                                                handleStyleUpdate({ color: colorObj.hex });
-                                                setShowColorPicker(false);
-                                            }}
-                                            className="w-3.5 h-3.5 rounded-full border border-white/20 hover:scale-110 transition-all flex items-center justify-center relative"
-                                            style={{ backgroundColor: colorObj.hex }}
-                                            title={colorObj.name}
-                                        >
-                                            {(slotStyle.color || '#1E293B') === colorObj.hex && (
-                                                <div className="w-1 h-1 bg-white rounded-full" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-
-                    <div className="w-[1px] h-3 bg-slate-800" />
-
-                    {/* Edit button */}
-                    <button
-                        onClick={() => setIsEditing(true)}
-                        className="p-1 hover:bg-indigo-600 hover:text-white rounded transition-colors text-indigo-400 flex items-center gap-0.5 font-bold px-1.5"
-                        title="输入文本"
-                    >
-                        <Type size={10} />
-                        编辑
-                    </button>
-                </div>
+                <CanvaSelectionFrame showCornerHandles={true} showEdgeHandles="horizontal" />
             )}
         </div>
     );

@@ -49,29 +49,29 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             />
 
             {/* 弹窗主体 */}
-            <div className="relative w-full max-w-[360px] bg-white rounded-2xl shadow-2xl border border-gray-100 
+            <div className="relative w-full max-w-[360px] bg-white rounded-2xl shadow-2xl border border-slate-100 
                           overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
                 {/* 顶部指示条 */}
-                <div className={`h-1.5 w-full ${type === 'danger' ? 'bg-red-500' : 'bg-[#3B82F6]'}`} />
+                <div className={`h-1.5 w-full ${type === 'danger' ? 'bg-rose-500' : 'bg-indigo-600'}`} />
 
                 <div className="p-6">
                     <div className="flex items-start gap-4">
-                        <div className={`p-2.5 rounded-xl shrink-0 ${type === 'danger' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-[#3B82F6]'
+                        <div className={`p-2.5 rounded-xl shrink-0 ${type === 'danger' ? 'bg-rose-50 text-rose-500' : 'bg-indigo-50 text-indigo-600'
                             }`}>
                             <AlertTriangle size={24} />
                         </div>
                         <div className="flex-1">
-                            <h3 className="text-lg font-bold text-[#18181B] mb-1 leading-tight">
+                            <h3 className="text-lg font-bold text-slate-900 mb-1 leading-tight">
                                 {title}
                             </h3>
-                            <p className="text-sm text-[#64748B] leading-relaxed">
+                            <p className="text-sm text-slate-500 leading-relaxed">
                                 {message}
                             </p>
                         </div>
                         <button
                             onClick={onCancel}
-                            className="text-[#94A3B8] hover:text-[#18181B] transition-colors p-1"
+                            className="text-slate-400 hover:text-slate-900 transition-colors p-1"
                         >
                             <X size={20} />
                         </button>
@@ -80,15 +80,15 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                     <div className="mt-8 flex items-center justify-end gap-3">
                         <button
                             onClick={onCancel}
-                            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-[#64748B] bg-[#F1F5F9] 
-                                     hover:bg-[#E2E8F0] hover:text-[#18181B] transition-all duration-200"
+                            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-500 bg-slate-100 
+                                     hover:bg-slate-200 hover:text-slate-900 transition-all duration-200"
                         >
                             {cancelText}
                         </button>
                         <button
                             onClick={onConfirm}
                             className={`px-6 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md 
-                                     transition-all duration-200 active:scale-95 ${type === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-[#18181B] hover:bg-black'
+                                     transition-all duration-200 active:scale-95 ${type === 'danger' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-slate-800 hover:bg-slate-900'
                                 }`}
                         >
                             {confirmText}

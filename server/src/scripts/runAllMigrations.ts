@@ -14,6 +14,8 @@ const scripts = [
     'migrateVideoExport.js',
     'migrateUnifiedAssets.js',
     'migrateBooksType.js',
+    'migratePageTemplates.js',
+    'migratePagesElements.js',
     'seedTemplates.js',
     'seedThemes.js'
 ];

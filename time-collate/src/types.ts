@@ -27,6 +27,8 @@ export interface Page {
   photos: Photo[];    // 页面图片
   layout: string;     // 页面布局类型 (支持静态内置或动态模板 ID)
   sortOrder?: number;
+  elements?: CanvasElement[]; // 新增：页面自由组件数组
+  background?: CanvasBackgroundConfig; // 新增：页面自定义背景配置
 }
 
 export interface LayoutElementStyle {
@@ -66,12 +68,104 @@ export interface LayoutSchema {
   elements: LayoutElement[];
 }
 
+//#region Canvas Editor Types
+export type CanvasElementType = 'photo-frame' | 'text' | 'sticker' | 'shape';
+
+export interface BaseCanvasElement {
+  id: string;
+  type: CanvasElementType;
+  x: number;       // 百分比相对坐标系 (0 - 100)
+  y: number;       // 百分比相对坐标系 (0 - 100)
+  width: number;   // 百分比宽度 (0 - 100)
+  height: number;  // 百分比高度 (0 - 100)
+  rotate: number;  // 顺时针旋转角度 (-360 - 360)
+  zIndex: number;  // 图层顺序
+  groupId?: string; // 逻辑分组 ID
+  locked?: boolean; // 误触编辑锁
+  role?: 'chapter-title' | 'chapter-date' | 'page-content' | 'none';
+}
+
+export interface PhotoFrameElement extends BaseCanvasElement {
+  type: 'photo-frame';
+  photo: {
+    id: string;
+    url: string;
+    ossKey?: string;
+    scale?: number;
+    xOffset?: number; // 百分比偏移 (-100 - 100)
+    yOffset?: number; // 百分比偏移 (-100 - 100)
+    styleType?: 'normal' | 'rounded' | 'polaroid' | 'film';
+    filterType?: 'none' | 'warm' | 'fresh' | 'retro';
+    caption?: string;
+    assetId?: string;
+    width?: number;
+    height?: number;
+  } | null;
+  placeholder?: string;
+}
+
+export interface TextElementConfig {
+  content: string;
+  fontFamily?: string;
+  fontSize?: string;
+  fontWeight?: string;
+  color?: string;
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  lineHeight?: number;
+  letterSpacing?: string;
+}
+
+export interface TextElement extends BaseCanvasElement {
+  type: 'text';
+  textConfig: TextElementConfig;
+}
+
+export interface StickerElementConfig {
+  stickerId: string;
+  imageUrl: string;
+  colorTint?: string;
+}
+
+export interface StickerElement extends BaseCanvasElement {
+  type: 'sticker';
+  stickerConfig: StickerElementConfig;
+}
+
+export interface ShapeElementConfig {
+  shapeType: 'rect' | 'circle' | 'triangle' | 'line';
+  fillColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+}
+
+export interface ShapeElement extends BaseCanvasElement {
+  type: 'shape';
+  shapeConfig: ShapeElementConfig;
+}
+
+export type CanvasElement = PhotoFrameElement | TextElement | StickerElement | ShapeElement;
+
+export interface CanvasBackgroundConfig {
+  color?: string;
+  backgroundImage?: string;
+  gridPattern?: boolean;
+  isSystemTheme?: boolean;
+}
+
+export interface CanvasLayoutSchema {
+  background?: CanvasBackgroundConfig;
+  elements: CanvasElement[];
+}
+//#endregion
+
 export interface Template {
   id: string;
   name: string;
+  templateType?: 'cover' | 'preface' | 'structural' | 'content';
   photoCount: number;
   category: string;
   layoutSchema: LayoutSchema;
+  thumbnailUrl?: string;
   visibility?: 'private' | 'public';
   creatorId?: string;
   createdAt?: number;
