@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Book, Chapter, Page, Photo, Template, BookTheme } from '../types';
+import type { Book, Chapter, Page, Photo, Template, BookTheme, CanvasElement, PhotoFrameElement } from '../types';
 import { getBookService } from '../services/serviceFactory';
 import { useAuthStore } from './useAuthStore';
 import { DEFAULT_TEMPLATES } from '../rendering/defaultTemplates';
@@ -9,10 +9,63 @@ import { debounce } from '../utils/debounce';
 // 获取 Service 单例（内部根据环境变量切换 Local/Cloud）
 const bookService = getBookService();
 
+// 虚拟书籍转化为排版模板保存
+async function saveTemplateFromVirtualBook(book: Book) {
+    const templateId = book.id.replace('temp-book-', '');
+    const page = book.pages[0];
+    const elements = page.elements || [];
+    const background = page.background || { color: '#FFFFFF', gridPattern: false };
+    const photoCount = elements.filter(el => el.type === 'photo-frame').length;
+    
+    const templateMeta = (book as any).templateMeta || {
+        name: book.title,
+        category: 'general',
+        templateType: 'content',
+        visibility: 'private',
+        creatorId: 'system'
+    };
+
+    const templateData = {
+        id: templateId === 'new' ? `tpl-${Date.now()}` : templateId,
+        name: book.title || templateMeta.name,
+        photoCount,
+        category: templateMeta.category || 'general',
+        templateType: templateMeta.templateType || 'content',
+        layoutSchema: {
+            background,
+            elements
+        },
+        visibility: templateMeta.visibility || 'private',
+        creatorId: templateMeta.creatorId || 'system'
+    };
+
+    const response = await axios.post('/templates', templateData);
+    if (response.data && response.data.success) {
+        const savedTpl = response.data.data;
+        if (templateId === 'new' && savedTpl && savedTpl.id) {
+            const newTplId = savedTpl.id;
+            const newBook = {
+                ...book,
+                id: `temp-book-${newTplId}`,
+                pages: [{
+                    ...page,
+                    id: `temp-page-${newTplId}`,
+                    layout: newTplId
+                }]
+            };
+            useBookStore.setState({ currentBook: newBook });
+        }
+    }
+}
+
 // 全局防抖保存执行器，提取为模块级作用域
 const debouncedSaveFn = debounce(async (book: Book, onSaveSuccess: () => void, onSaveError: () => void) => {
     try {
-        await bookService.saveBook(book);
+        if (book.type === 'template' || book.id.startsWith('temp-book-')) {
+            await saveTemplateFromVirtualBook(book);
+        } else {
+            await bookService.saveBook(book);
+        }
         onSaveSuccess();
     } catch (e) {
         console.error('Failed to save book state (debounced)', e);
@@ -35,6 +88,7 @@ interface BookState {
     activePhotoEdit: { chapterId: string, pageId: string, photoId: string } | null; // 当前正在被编辑微调的图片
     activeTextEdit: { chapterId: string, pageId: string, slotId: string } | null; // 当前正在被编辑微调的文本槽位
     activeStickerEdit: { chapterId: string, pageId: string, stickerId: string } | null; // 当前正在被编辑微调的贴纸
+    alignLines: { type: 'v' | 'h'; val: number }[]; // 智能对齐吸附参考线
     templates: Template[];        // 动态加载的排版模板库
     themes: BookTheme[];          // 动态加载的主题库
 
@@ -174,7 +228,11 @@ export const useBookStore = create<BookState>((set, get) => {
         if (immediate) {
             debouncedSaveFn.cancel();
             try {
-                await bookService.saveBook(updatedBook);
+                if (updatedBook.type === 'template' || updatedBook.id.startsWith('temp-book-')) {
+                    await saveTemplateFromVirtualBook(updatedBook);
+                } else {
+                    await bookService.saveBook(updatedBook);
+                }
                 set({ saveStatus: 'saved' });
             } catch (e) {
                 console.error('Failed to save book state immediately', e);
@@ -203,6 +261,7 @@ export const useBookStore = create<BookState>((set, get) => {
         activePhotoEdit: null,
         activeTextEdit: null,
         activeStickerEdit: null, // 新增贴纸编辑状态初始值
+        alignLines: [], // 智能对齐吸附参考线初始值
         templates: DEFAULT_TEMPLATES,
         themes: [],
 
@@ -729,6 +788,15 @@ export const useBookStore = create<BookState>((set, get) => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
+                            if (p.elements) {
+                                const updatedElements = p.elements.map(el => {
+                                    if (el.id === photoId && el.type === 'photo-frame') {
+                                        return { ...el, photo: null } as PhotoFrameElement;
+                                    }
+                                    return el;
+                                });
+                                return { ...p, elements: updatedElements };
+                            }
                             return { ...p, photos: p.photos.filter(photo => photo.id !== photoId) };
                         }
                         return p;
@@ -777,6 +845,23 @@ export const useBookStore = create<BookState>((set, get) => {
                 if (c.id === chapterId) {
                     const updatedPages = c.pages.map(p => {
                         if (p.id === pageId) {
+                            if (p.elements) {
+                                const updatedElements = p.elements.map(el => {
+                                    if (el.id === photoId && el.type === 'photo-frame') {
+                                        const pf = el as PhotoFrameElement;
+                                        return {
+                                            ...pf,
+                                            photo: pf.photo ? { ...pf.photo, ...updates } : {
+                                                id: `photo-${Date.now()}`,
+                                                url: updates.url || '',
+                                                ...updates
+                                            }
+                                        } as PhotoFrameElement;
+                                    }
+                                    return el;
+                                });
+                                return { ...p, elements: updatedElements };
+                            }
                             const updatedPhotos = p.photos.map(photo =>
                                 photo.id === photoId ? { ...photo, ...updates } : photo
                             );
@@ -926,7 +1011,11 @@ export const useBookStore = create<BookState>((set, get) => {
             if (!currentBook) return;
             set({ saveStatus: 'saving' });
             try {
-                await bookService.saveBook(currentBook);
+                if (currentBook.type === 'template' || currentBook.id.startsWith('temp-book-')) {
+                    await saveTemplateFromVirtualBook(currentBook);
+                } else {
+                    await bookService.saveBook(currentBook);
+                }
                 set({ saveStatus: 'saved' });
             } catch (e) {
                 console.error('Failed to manually save book state', e);

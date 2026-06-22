@@ -6,6 +6,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import { CustomPhotoBrowser } from './CustomPhotoBrowser';
 import { CustomDecorationBrowser } from './CustomDecorationBrowser';
 import { PAGE_SIZES, type PageSize } from '../../../rendering/PhysicalConstants';
+import type { CanvasElement, PhotoFrameElement, TextElement, StickerElement } from '../../../types';
 import {
     parsePageContent,
     updatePageDecorations,
@@ -38,7 +39,11 @@ import {
     ChevronDown,
     ChevronLeft,
     ChevronRight,
-    Trash2
+    Trash2,
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+    AlignJustify
 } from 'lucide-react';
 import { COVER_PRESET_BACKGROUNDS, parseCoverUrl } from './GeneratedCover';
 import { BOOK_CATEGORIES } from '../../book/components/BookEditModal';
@@ -127,7 +132,7 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
     const activeInspectorSection = useBookStore(state => state.activeInspectorSection);
     const updatePhotoSettings = useBookStore(state => state.updatePhotoSettings);
     const deletePhotoFromPage = useBookStore(state => state.deletePhotoFromPage);
-    const marketTemplates = useMarketStore(state => state.marketTemplates || []);
+    const marketTemplates = useMarketStore(state => state.marketTemplates);
 
     // 封面编辑相关 Local State
     const [isUploading, setIsUploading] = useState(false);
@@ -216,17 +221,40 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
         const page = chapter?.pages.find(p => p.id === activeTextEdit.pageId);
         if (!page) return null;
 
+        // V2.0 Canvas element support
+        if (page.elements) {
+            const el = page.elements.find(e => e.id === activeTextEdit.slotId);
+            if (el && el.type === 'text') {
+                const textEl = el as TextElement;
+                return {
+                    isV2: true,
+                    text: textEl.textConfig.content || '',
+                    style: {
+                        fontFamily: textEl.textConfig.fontFamily || 'sans-serif',
+                        fontSize: textEl.textConfig.fontSize || '14px',
+                        fontWeight: textEl.textConfig.fontWeight || 'normal',
+                        color: textEl.textConfig.color || '#334155',
+                        textAlign: textEl.textConfig.textAlign || 'left',
+                        lineHeight: textEl.textConfig.lineHeight || 1.6,
+                        letterSpacing: textEl.textConfig.letterSpacing || '0px'
+                    },
+                    rawStyle: {}
+                };
+            }
+        }
+
         const template = templates.find((t) => t.id === page.layout);
         const element = template?.layoutSchema.elements.find(e => e.id === activeTextEdit.slotId);
 
         return {
+            isV2: false,
             text: getSlotText(page.content, activeTextEdit.slotId),
             style: getSlotStyle(page.content, activeTextEdit.slotId, {
                 fontSize: element?.style.fontSize,
                 fontWeight: element?.style.fontWeight as any,
                 lineHeight: element?.style.lineHeight,
             }),
-            rawStyle: parsePageContent(page.content).slots[activeTextEdit.slotId]?.style || {}
+            rawStyle: (parsePageContent(page.content).slots[activeTextEdit.slotId]?.style || {}) as any
         };
     }, [activeTextEdit, currentBook, templates]);
 
@@ -235,8 +263,37 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
         const chapter = chapters.find(c => c.id === activeStickerEdit.chapterId);
         const page = chapter?.pages.find(p => p.id === activeStickerEdit.pageId);
         if (!page) return null;
+
+        if (page.elements) {
+            const el = page.elements.find(e => e.id === activeStickerEdit.stickerId);
+            if (el && el.type === 'sticker') {
+                const stk = el as StickerElement;
+                return {
+                    isV2: true,
+                    element: stk,
+                    id: stk.id,
+                    stickerId: stk.stickerConfig.stickerId,
+                    imageUrl: stk.stickerConfig.imageUrl,
+                    colorTint: stk.stickerConfig.colorTint,
+                    size: stk.width,
+                    rotate: stk.rotate
+                };
+            }
+        }
+
         const decorations = getPageDecorations(page.content);
-        return decorations.find(d => d.id === activeStickerEdit.stickerId) || null;
+        const stk = decorations.find(d => d.id === activeStickerEdit.stickerId);
+        if (!stk) return null;
+        return {
+            isV2: false,
+            element: null as any,
+            id: stk.id,
+            stickerId: stk.content,
+            imageUrl: '',
+            colorTint: undefined as string | undefined,
+            size: stk.size || 16,
+            rotate: stk.rotate || 0
+        };
     }, [activeStickerEdit, currentBook, chapters]);
 
     const stickerRotation = useMemo(() => {
@@ -252,6 +309,33 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
         const page = chapter?.pages.find(p => p.id === pageId);
         if (!page) return;
 
+        if (page.elements) {
+            const updatedElements = page.elements.map(el => {
+                if (el.id === slotId && el.type === 'text') {
+                    const textEl = el as TextElement;
+                    return {
+                        ...textEl,
+                        textConfig: {
+                            ...textEl.textConfig,
+                             ...(updates.text !== undefined ? { content: updates.text } : {}),
+                            ...(updates.style !== undefined ? {
+                                fontFamily: updates.style.fontFamily !== undefined ? updates.style.fontFamily : textEl.textConfig.fontFamily,
+                                fontSize: updates.style.fontSize !== undefined ? updates.style.fontSize : textEl.textConfig.fontSize,
+                                fontWeight: updates.style.fontWeight !== undefined ? updates.style.fontWeight : textEl.textConfig.fontWeight,
+                                color: updates.style.color !== undefined ? updates.style.color : textEl.textConfig.color,
+                                textAlign: updates.style.textAlign !== undefined ? updates.style.textAlign : textEl.textConfig.textAlign,
+                                lineHeight: updates.style.lineHeight !== undefined ? updates.style.lineHeight : textEl.textConfig.lineHeight,
+                                letterSpacing: updates.style.letterSpacing !== undefined ? updates.style.letterSpacing : textEl.textConfig.letterSpacing,
+                            } : {})
+                        }
+                    } as TextElement;
+                }
+                return el;
+            });
+            updatePage(chapterId, pageId, { elements: updatedElements });
+            return;
+        }
+
         let content = page.content || '';
         if (updates.text !== undefined) {
             content = updateSlotText(content, slotId, updates.text);
@@ -263,8 +347,30 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
         updatePage(chapterId, pageId, { content });
     }, [activeTextEdit, currentBook, updatePage, chapters]);
 
-    const updateSticker = useCallback((updates: { size?: number; rotate?: number }) => {
+    const updateSticker = useCallback((updates: { size?: number; rotate?: number; colorTint?: string }) => {
         if (!activeStickerEdit || !activePage || !activeChapter) return;
+
+        if (activePage.elements) {
+            const updatedElements = activePage.elements.map(el => {
+                if (el.id === activeStickerEdit.stickerId && el.type === 'sticker') {
+                    const stk = el as StickerElement;
+                    return {
+                        ...stk,
+                        rotate: updates.rotate !== undefined ? updates.rotate : stk.rotate,
+                        width: updates.size !== undefined ? updates.size : stk.width,
+                        height: updates.size !== undefined ? updates.size : stk.height,
+                        stickerConfig: {
+                            ...stk.stickerConfig,
+                            colorTint: updates.colorTint !== undefined ? (updates.colorTint === 'undefined' || !updates.colorTint ? undefined : updates.colorTint) : stk.stickerConfig.colorTint
+                        }
+                    } as StickerElement;
+                }
+                return el;
+            });
+            updatePage(activeChapter.id, activePage.id, { elements: updatedElements });
+            return;
+        }
+
         const parsed = parsePageContent(activePage.content);
         const decorations = parsed.decorations || [];
         const updatedDecorations = decorations.map(d => {
@@ -283,6 +389,13 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
     const deleteSelectedSticker = useCallback(() => {
         if (!activeStickerEdit || !activePage || !activeChapter) return;
         if (window.confirm('确定要删除这个贴图吗？')) {
+            if (activePage.elements) {
+                const updatedElements = activePage.elements.filter(el => el.id !== activeStickerEdit.stickerId);
+                updatePage(activeChapter.id, activePage.id, { elements: updatedElements });
+                setActiveStickerEdit(null);
+                return;
+            }
+
             const parsed = parsePageContent(activePage.content);
             const decorations = parsed.decorations || [];
             const updatedDecorations = decorations.filter(d => d.id !== activeStickerEdit.stickerId);
@@ -294,6 +407,31 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
 
     const handleMicroAdjust = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         if (!activePage || !activeChapter) return;
+
+        if (activePage.elements) {
+            const targetId = activeTextEdit?.slotId || activeStickerEdit?.stickerId || activePhotoEdit?.photoId;
+            if (!targetId) return;
+
+            const updatedElements = activePage.elements.map(el => {
+                if (el.id === targetId) {
+                    let nextX = el.x;
+                    let nextY = el.y;
+                    const STEP = 0.5;
+                    if (direction === 'left') nextX -= STEP;
+                    if (direction === 'right') nextX += STEP;
+                    if (direction === 'up') nextY -= STEP;
+                    if (direction === 'down') nextY += STEP;
+                    return {
+                        ...el,
+                        x: Math.max(0, Math.min(100, nextX)),
+                        y: Math.max(0, Math.min(100, nextY))
+                    };
+                }
+                return el;
+            });
+            updatePage(activeChapter.id, activePage.id, { elements: updatedElements });
+            return;
+        }
 
         let elementId = '';
         let defaultLeft = '0%';
@@ -456,6 +594,32 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
     const handleAddSticker = useCallback((stickerId: string) => {
         if (!activePage || !activeChapter) return;
 
+        if (activePage.elements) {
+            const newStickerElement: StickerElement = {
+                id: `sticker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'sticker',
+                x: 50,
+                y: 50,
+                width: 15,
+                height: 15,
+                rotate: 0,
+                zIndex: activePage.elements.length > 0 ? Math.max(...activePage.elements.map(e => e.zIndex)) + 10 : 20,
+                stickerConfig: {
+                    stickerId,
+                    imageUrl: ''
+                }
+            };
+            updatePage(activeChapter.id, activePage.id, {
+                elements: [...activePage.elements, newStickerElement]
+            });
+            setActiveStickerEdit({
+                chapterId: activeChapter.id,
+                pageId: activePage.id,
+                stickerId: newStickerElement.id
+            });
+            return;
+        }
+
         const parsed = parsePageContent(activePage.content);
         const decorations: any[] = parsed.decorations || [];
 
@@ -472,7 +636,7 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
 
         const updatedContent = updatePageDecorations(activePage.content, [...decorations, newSticker]);
         updatePage(activeChapter.id, activePage.id, { content: updatedContent });
-    }, [activePage, activeChapter, updatePage]);
+    }, [activePage, activeChapter, updatePage, setActiveStickerEdit]);
 
     const renderLayoutBlueprintSvg = (tpl: any) => {
         const elements = tpl?.layoutSchema?.elements || [];
@@ -865,25 +1029,154 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
                                             />
                                         </div>
 
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">字体大小 (Font Size)</span>
-                                            <select
-                                                value={selectedTextSlot.rawStyle.fontSize || ''}
-                                                onChange={(e) => updateSelectedTextSlot({ style: { fontSize: e.target.value || undefined } })}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-xs font-bold text-slate-700 focus:border-indigo-650 focus:bg-white transition-colors cursor-pointer"
-                                            >
-                                                <option value="">默认 (Default)</option>
-                                                <option value="9pt">超小 (9pt)</option>
-                                                <option value="10pt">小 (10pt)</option>
-                                                <option value="12pt">标准 (12pt)</option>
-                                                <option value="14pt">中等 (14pt)</option>
-                                                <option value="16pt">大 (16pt)</option>
-                                                <option value="18pt">超大 (18pt)</option>
-                                                <option value="24pt">小标题 (24pt)</option>
-                                                <option value="28pt">大标题 (28pt)</option>
-                                                <option value="32pt">超大标题 (32pt)</option>
-                                            </select>
-                                        </div>
+                                        {selectedTextSlot.isV2 ? (
+                                            <>
+                                                {/* Font Family */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">字体系列 (Font Family)</span>
+                                                    <select
+                                                        value={selectedTextSlot.style.fontFamily || 'sans-serif'}
+                                                        onChange={(e) => updateSelectedTextSlot({ style: { fontFamily: e.target.value } })}
+                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-xs font-bold text-slate-700 focus:border-indigo-650 focus:bg-white transition-colors cursor-pointer"
+                                                    >
+                                                        <option value="sans-serif">默认无衬线</option>
+                                                        <option value="Outfit">Outfit (英文标牌)</option>
+                                                        <option value="Inter">Inter (现代科技)</option>
+                                                        <option value="sans">现代黑体 (中文)</option>
+                                                        <option value="serif">优雅衬线 (中文)</option>
+                                                        <option value="handwriting">硬笔手写</option>
+                                                    </select>
+                                                </div>
+
+                                                {/* Font Size (Slider + Input) */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    <div className="flex justify-between items-center text-[10px] text-slate-455 font-bold uppercase tracking-wider pl-0.5">
+                                                        <span>字体大小 (Font Size)</span>
+                                                        <span className="text-indigo-655 font-mono">{parseInt(String(selectedTextSlot.style.fontSize || '14')) || 14}px</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <input
+                                                            type="range"
+                                                            min="9"
+                                                            max="96"
+                                                            step="1"
+                                                            value={parseInt(String(selectedTextSlot.style.fontSize || '14')) || 14}
+                                                            onChange={(e) => updateSelectedTextSlot({ style: { fontSize: `${e.target.value}px` } })}
+                                                            className="flex-1 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-650"
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            min="8"
+                                                            max="200"
+                                                            value={parseInt(String(selectedTextSlot.style.fontSize || '14')) || 14}
+                                                            onChange={(e) => updateSelectedTextSlot({ style: { fontSize: `${e.target.value}px` } })}
+                                                            className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 text-center text-xs outline-none text-slate-700 font-bold focus:border-indigo-400 focus:bg-white"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Font Weight */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">字体粗细 (Font Weight)</span>
+                                                    <select
+                                                        value={selectedTextSlot.style.fontWeight || 'normal'}
+                                                        onChange={(e) => updateSelectedTextSlot({ style: { fontWeight: e.target.value } })}
+                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-xs font-bold text-slate-700 focus:border-indigo-650 focus:bg-white transition-colors cursor-pointer"
+                                                    >
+                                                        <option value="normal">常规 (Normal)</option>
+                                                        <option value="bold">加粗 (Bold)</option>
+                                                        <option value="300">细体 (Light 300)</option>
+                                                        <option value="400">常规 (Regular 400)</option>
+                                                        <option value="500">中黑 (Medium 500)</option>
+                                                        <option value="700">粗体 (Bold 700)</option>
+                                                        <option value="850">特粗 (Extra Bold 850)</option>
+                                                    </select>
+                                                </div>
+
+                                                {/* Text Alignment */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">对齐方式 (Alignment)</span>
+                                                    <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200 w-fit">
+                                                        {[
+                                                            { id: 'left', icon: <AlignLeft size={14} /> },
+                                                            { id: 'center', icon: <AlignCenter size={14} /> },
+                                                            { id: 'right', icon: <AlignRight size={14} /> },
+                                                            { id: 'justify', icon: <AlignJustify size={14} /> }
+                                                        ].map(align => {
+                                                            const isAct = (selectedTextSlot.style.textAlign || 'left') === align.id;
+                                                            return (
+                                                                <button
+                                                                    key={align.id}
+                                                                    type="button"
+                                                                    onClick={() => updateSelectedTextSlot({ style: { textAlign: align.id } })}
+                                                                    className={`p-1.5 rounded-lg transition-all cursor-pointer ${isAct ? 'bg-white text-indigo-650 shadow-sm border border-slate-200/50 scale-102' : 'text-slate-400 hover:text-slate-650'}`}
+                                                                >
+                                                                    {align.icon}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Line Height */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    <div className="flex justify-between items-center text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">
+                                                        <span>文本行高 (Line Height)</span>
+                                                        <span className="text-indigo-655 font-mono">{(selectedTextSlot.style.lineHeight || 1.6)}</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min="1.0"
+                                                        max="3.0"
+                                                        step="0.1"
+                                                        value={selectedTextSlot.style.lineHeight || 1.6}
+                                                        onChange={(e) => updateSelectedTextSlot({ style: { lineHeight: parseFloat(e.target.value) } })}
+                                                        className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-650"
+                                                    />
+                                                </div>
+
+                                                {/* Letter Spacing */}
+                                                <div className="flex flex-col gap-1.5">
+                                                    <div className="flex justify-between items-center text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">
+                                                        <span>字符间距 (Letter Spacing)</span>
+                                                        <span className="text-indigo-655 font-mono">{selectedTextSlot.style.letterSpacing || '0px'}</span>
+                                                    </div>
+                                                    <select
+                                                        value={selectedTextSlot.style.letterSpacing || '0px'}
+                                                        onChange={(e) => updateSelectedTextSlot({ style: { letterSpacing: e.target.value } })}
+                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-xs font-bold text-slate-700 focus:border-indigo-650 focus:bg-white transition-colors cursor-pointer"
+                                                    >
+                                                        <option value="0px">常规 (0px)</option>
+                                                        <option value="0.5px">紧凑 (0.5px)</option>
+                                                        <option value="1px">略宽 (1px)</option>
+                                                        <option value="2px">宽 (2px)</option>
+                                                        <option value="4px">超宽 (4px)</option>
+                                                        <option value="6px">特宽 (6px)</option>
+                                                        <option value="10px">极宽 (10px)</option>
+                                                    </select>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-col gap-1.5">
+                                                <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">字体大小 (Font Size)</span>
+                                                <select
+                                                    value={selectedTextSlot.rawStyle.fontSize || ''}
+                                                    onChange={(e) => updateSelectedTextSlot({ style: { fontSize: e.target.value || undefined } })}
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none text-xs font-bold text-slate-700 focus:border-indigo-650 focus:bg-white transition-colors cursor-pointer"
+                                                >
+                                                    <option value="">默认 (Default)</option>
+                                                    <option value="9pt">超小 (9pt)</option>
+                                                    <option value="10pt">小 (10pt)</option>
+                                                    <option value="12pt">标准 (12pt)</option>
+                                                    <option value="14pt">中等 (14pt)</option>
+                                                    <option value="16pt">大 (16pt)</option>
+                                                    <option value="18pt">超大 (18pt)</option>
+                                                    <option value="24pt">小标题 (24pt)</option>
+                                                    <option value="28pt">大标题 (28pt)</option>
+                                                    <option value="32pt">超大标题 (32pt)</option>
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -909,7 +1202,7 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
                                                         key={col.label}
                                                         type="button"
                                                         onClick={() => updateSelectedTextSlot({ style: { color: col.value || undefined } })}
-                                                        className={`w-6 h-6 rounded-full border transition-all relative flex items-center justify-center cursor-pointer ${selectedTextSlot.rawStyle.color === col.value || (!selectedTextSlot.rawStyle.color && col.value === '') ? 'ring-2 ring-indigo-500 scale-110' : 'hover:scale-105'} ${col.border || 'border-transparent'}`}
+                                                        className={`w-6 h-6 rounded-full border transition-all relative flex items-center justify-center cursor-pointer ${selectedTextSlot.style?.color === col.value || (!selectedTextSlot.style?.color && col.value === '') ? 'ring-2 ring-indigo-500 scale-110' : 'hover:scale-105'} ${col.border || 'border-transparent'}`}
                                                         style={{ backgroundColor: col.color }}
                                                         title={col.label}
                                                     >
@@ -917,6 +1210,27 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
                                                     </button>
                                                 ))}
                                             </div>
+
+                                            {selectedTextSlot.isV2 && (
+                                                <div className="flex flex-col gap-1.5 mt-3 animate-in fade-in duration-200">
+                                                    <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">自定义颜色 (Custom Color)</span>
+                                                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                                                        <input
+                                                            type="color"
+                                                            value={selectedTextSlot.style.color?.startsWith('#') ? selectedTextSlot.style.color : '#334155'}
+                                                            onChange={(e) => updateSelectedTextSlot({ style: { color: e.target.value } })}
+                                                            className="w-8 h-8 rounded-lg border border-slate-250 cursor-pointer p-0 bg-transparent"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="#334155"
+                                                            value={selectedTextSlot.style.color || ''}
+                                                            onChange={(e) => updateSelectedTextSlot({ style: { color: e.target.value } })}
+                                                            className="flex-1 bg-white border border-slate-200 rounded-md px-2 py-0.5 text-xs outline-none text-slate-700 focus:border-indigo-400 transition-all font-mono"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -1024,6 +1338,37 @@ export const RightEditorDrawer: React.FC<RightEditorDrawerProps> = ({
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Color Tint for V2.0 Stickers */}
+                                        {selectedSticker.isV2 && (
+                                            <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-100">
+                                                <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider pl-0.5">贴纸着色 (Color Tint)</span>
+                                                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                                                    <input
+                                                        type="color"
+                                                        value={selectedSticker.colorTint || '#ffffff'}
+                                                        onChange={(e) => updateSticker({ colorTint: e.target.value })}
+                                                        className="w-7 h-7 rounded-lg border border-slate-250 cursor-pointer p-0 bg-transparent"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="无着色"
+                                                        value={selectedSticker.colorTint || ''}
+                                                        onChange={(e) => updateSticker({ colorTint: e.target.value || undefined })}
+                                                        className="flex-1 bg-white border border-slate-150 rounded-md px-2 py-0.5 text-xs outline-none text-slate-700 focus:border-indigo-400 transition-all font-mono"
+                                                    />
+                                                    {selectedSticker.colorTint && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateSticker({ colorTint: undefined })}
+                                                            className="text-[9px] text-red-500 hover:bg-red-50 px-1.5 py-0.5 rounded border border-red-200 cursor-pointer"
+                                                        >
+                                                            重置
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="pt-3 border-t border-slate-100 flex justify-end">
                                             <button

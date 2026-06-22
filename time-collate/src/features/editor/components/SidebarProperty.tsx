@@ -155,7 +155,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
         updatePage(chapterId, pageId, { content });
     }, [activeTextEdit, currentBook, updatePage, chapters]);
 
-    const marketTemplates = useMarketStore(state => state.marketTemplates || []);
+    const marketTemplates = useMarketStore(state => state.marketTemplates);
 
     const handleMicroAdjust = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
         if (!activePage || !activeChapter) return;

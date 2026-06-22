@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { parseCoverUrl } from '../components/GeneratedCover';
 import { getBookService } from '../../../services/serviceFactory';
-import { TemplateEditor } from './TemplateEditor';
+import type { Book, Template } from '../../../types';
+import axios from 'axios';
 
 const bookService = getBookService();
 
@@ -33,10 +34,6 @@ const bookService = getBookService();
 export function Editor() {
     const { bookId, templateId } = useParams<{ bookId: string; templateId: string }>();
     const navigate = useNavigate();
-
-    if (templateId) {
-        return <TemplateEditor templateId={templateId} />;
-    }
 
     // 1. Zustand Store 切片状态与操作，防止不必要的多余重渲染
     const currentBook = useBookStore(state => state.currentBook);
@@ -107,10 +104,74 @@ export function Editor() {
     useEffect(() => {
         if (bookId) {
             loadBook(bookId);
+        } else if (templateId) {
+            const loadTemplateAsBook = async () => {
+                useBookStore.setState({ isLoading: true });
+                try {
+                    let templateData: any = {
+                        id: templateId,
+                        name: '新建排版模板',
+                        category: 'general',
+                        templateType: 'content',
+                        layoutSchema: {
+                            background: { color: '#FFFFFF', gridPattern: true },
+                            elements: []
+                        },
+                        visibility: 'private',
+                        creatorId: 'system'
+                    };
+
+                    if (templateId !== 'new') {
+                        const res = await axios.get(`/templates/${templateId}`);
+                        if (res.data && res.data.success) {
+                            templateData = res.data.data;
+                        }
+                    }
+
+                    const mockBook: Book = {
+                        id: `temp-book-${templateData.id}`,
+                        userId: 'system',
+                        title: templateData.name,
+                        author: '设计师',
+                        type: 'template',
+                        createdAt: templateData.createdAt || Date.now(),
+                        theme: 'classic',
+                        pageSize: 'A4',
+                        pages: [
+                            {
+                                id: `temp-page-${templateData.id}`,
+                                content: '',
+                                photos: [],
+                                layout: templateData.id,
+                                elements: templateData.layoutSchema?.elements || [],
+                                background: templateData.layoutSchema?.background || { color: '#FFFFFF', gridPattern: false }
+                            }
+                        ],
+                        templateMeta: {
+                            category: templateData.category || 'general',
+                            templateType: templateData.templateType || 'content',
+                            visibility: templateData.visibility || 'private',
+                            creatorId: templateData.creatorId || 'system'
+                        } as any
+                    } as any;
+
+                    useBookStore.setState({
+                        currentBook: mockBook,
+                        isLoading: false,
+                        historyPast: [],
+                        historyFuture: [],
+                        editorScope: 'chapters'
+                    });
+                } catch (err) {
+                    console.error('Failed to load template as virtual book:', err);
+                    useBookStore.setState({ isLoading: false, error: '加载排版模板失败' });
+                }
+            };
+            loadTemplateAsBook();
         }
         loadTemplates();
         loadAssetCache();
-    }, [bookId, loadBook, loadTemplates, loadAssetCache]);
+    }, [bookId, templateId, loadBook, loadTemplates, loadAssetCache]);
 
     useEffect(() => {
         return () => {
@@ -300,27 +361,80 @@ export function Editor() {
                             </button>
                             <div className="h-4 w-px bg-gray-200" />
 
-                            {/* View Mode Selector Tab */}
-                            <div className="flex bg-slate-100 p-0.5 rounded-full border border-slate-200/50 shadow-inner shrink-0 select-none">
-                                <button
-                                    onClick={() => setEditorScope('cover')}
-                                    className={`px-3.5 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${editorScope === 'cover'
-                                            ? 'bg-white text-indigo-655 shadow-sm'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                        }`}
-                                >
-                                    书封
-                                </button>
-                                <button
-                                    onClick={() => setEditorScope('chapters')}
-                                    className={`px-3.5 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${editorScope === 'chapters'
-                                            ? 'bg-white text-indigo-655 shadow-sm'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                        }`}
-                                >
-                                    内容
-                                </button>
-                            </div>
+                            {/* View Mode Selector Tab or Template Metadata */}
+                            {currentBook.type === 'template' ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={currentBook.title}
+                                        onChange={(e) => {
+                                            const updatedBook = { ...currentBook, title: e.target.value };
+                                            useBookStore.setState({ currentBook: updatedBook });
+                                        }}
+                                        className="px-2.5 py-1 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-36"
+                                        placeholder="排版模板名称..."
+                                    />
+                                    <select
+                                        value={(currentBook as any).templateMeta?.templateType || 'content'}
+                                        onChange={(e) => {
+                                            const updatedBook = {
+                                                ...currentBook,
+                                                templateMeta: {
+                                                    ...(currentBook as any).templateMeta,
+                                                    templateType: e.target.value
+                                                }
+                                            };
+                                            useBookStore.setState({ currentBook: updatedBook });
+                                        }}
+                                        className="px-1.5 py-1 text-[10px] font-bold border border-slate-250 rounded-lg bg-white text-slate-600 focus:outline-none cursor-pointer"
+                                    >
+                                        <option value="content">内容页模板</option>
+                                        <option value="cover">书封页模板</option>
+                                        <option value="preface">扉页模板</option>
+                                        <option value="structural">过渡页模板</option>
+                                    </select>
+                                    <select
+                                        value={(currentBook as any).templateMeta?.category || 'general'}
+                                        onChange={(e) => {
+                                            const updatedBook = {
+                                                ...currentBook,
+                                                templateMeta: {
+                                                    ...(currentBook as any).templateMeta,
+                                                    category: e.target.value
+                                                }
+                                            };
+                                            useBookStore.setState({ currentBook: updatedBook });
+                                        }}
+                                        className="px-1.5 py-1 text-[10px] font-bold border border-slate-250 rounded-lg bg-white text-slate-600 focus:outline-none cursor-pointer"
+                                    >
+                                        <option value="general">通用分类</option>
+                                        <option value="travel">旅行分类</option>
+                                        <option value="family">亲子分类</option>
+                                        <option value="couple">情侣分类</option>
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="flex bg-slate-100 p-0.5 rounded-full border border-slate-200/50 shadow-inner shrink-0 select-none">
+                                    <button
+                                        onClick={() => setEditorScope('cover')}
+                                        className={`px-3.5 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${editorScope === 'cover'
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-800'
+                                            }`}
+                                    >
+                                        书封
+                                    </button>
+                                    <button
+                                        onClick={() => setEditorScope('chapters')}
+                                        className={`px-3.5 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${editorScope === 'chapters'
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-800'
+                                            }`}
+                                    >
+                                        内容
+                                    </button>
+                                </div>
+                            )}
 
                             <div className="h-4 w-px bg-gray-200" />
 
@@ -370,33 +484,30 @@ export function Editor() {
 
                             <div className="w-px h-4 bg-gray-200" />
 
-                            {/* Live Preview Toggle */}
-                            <button
-                                onClick={() => setEditorMode(editorMode === 'hand' ? 'select' : 'hand')}
-                                className={`border px-3.5 py-1.5 rounded-full transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm ${isLivePreview
-                                        ? 'bg-emerald-50 border-emerald-250 text-emerald-700 hover:bg-emerald-100/50'
-                                        : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 hover:text-indigo-600'
-                                    }`}
-                            >
-                                <div className={`w-2 h-2 rounded-full ${isLivePreview ? 'bg-emerald-500 animate-ping' : 'bg-gray-400'}`} />
-                                <span>{isLivePreview ? '无干扰预览：开' : '实时预览'}</span>
-                            </button>
-
-                            {/* 3D Preview Toggle */}
-                            <button
-                                onClick={() => {
-                                    const hasContent = chapters.some(c => c.pages.length > 0);
-                                    if (hasContent) {
-                                        setIsReadMode(true);
-                                    } else {
-                                        setShowEmptyContentModal(true);
-                                    }
-                                }}
-                                className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 hover:text-indigo-600 px-3.5 py-1.5 rounded-full transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm"
-                            >
-                                <BookOpen size={13} />
-                                <span>预览回忆书</span>
-                            </button>
+                            {/* 3D Preview or Template Publish Toggle */}
+                            {currentBook.type === 'template' ? (
+                                <button
+                                    onClick={triggerSaveBook}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-full transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                >
+                                    <span>发布排版模板</span>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        const hasContent = chapters.some(c => c.pages.length > 0);
+                                        if (hasContent) {
+                                            setIsReadMode(true);
+                                        } else {
+                                            setShowEmptyContentModal(true);
+                                        }
+                                    }}
+                                    className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 hover:text-indigo-600 px-3.5 py-1.5 rounded-full transition-all text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                >
+                                    <BookOpen size={13} />
+                                    <span>预览回忆书</span>
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
@@ -405,7 +516,7 @@ export function Editor() {
                 <div className="flex-1 flex w-full overflow-hidden relative">
 
                     {/* Column 1: LeftSpreadNavigator */}
-                    {!isFullscreenPreview && editorScope !== 'cover' && (
+                    {!isFullscreenPreview && editorScope !== 'cover' && currentBook.type !== 'template' && (
                         <SpreadNavigator
                             activeChapterId={activeChapterId}
                             activePageId={activePageId}

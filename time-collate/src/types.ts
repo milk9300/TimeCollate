@@ -16,6 +16,7 @@ export interface Photo {
   slotIndex?: number;    // 当前分配的槽位索引 (0, 1, 2...)
   styleType?: 'normal' | 'rounded' | 'polaroid' | 'film'; // 图片物理边框样式
   filterType?: 'none' | 'warm' | 'fresh' | 'retro';       // 图片滤镜效果
+  assetId?: string;                                       // 资源关联 ID
 }
 
 export interface Page {
@@ -164,7 +165,10 @@ export interface Template {
   templateType?: 'cover' | 'preface' | 'structural' | 'content';
   photoCount: number;
   category: string;
-  layoutSchema: LayoutSchema;
+  layoutSchema: {
+    background?: any;
+    elements: any[];
+  };
   thumbnailUrl?: string;
   visibility?: 'private' | 'public';
   creatorId?: string;

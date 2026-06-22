@@ -395,7 +395,7 @@ export const CustomDecorationBrowser: React.FC<CustomDecorationBrowserProps> = (
                                 return (
                                     <div
                                         key={mat.id}
-                                        onClick={() => handleAddSticker(mat.id)}
+                                        onDoubleClick={() => handleAddSticker(mat.id)}
                                         draggable
                                         onDragStart={(e) => handleDragStart(e, 'sticker', mat.id)}
                                         className="group relative aspect-square rounded-md overflow-hidden border border-[#E7DECD] bg-[#FAF6EE] p-1.5 cursor-grab active:cursor-grabbing hover:scale-105 hover:border-indigo-400 hover:bg-amber-50/30 transition-all flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
