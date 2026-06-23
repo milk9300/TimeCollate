@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ShapeElement, CanvasElement } from '../../types';
 import { useBookStore } from '../../store';
+import { getVirtualDimensions } from '../PhysicalConstants';
 import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 import { useCanvasElementTransform } from '../../features/editor/hooks/useCanvasElementTransform';
 
@@ -51,13 +52,17 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
         });
     };
 
+    const currentBook = useBookStore(state => state.currentBook);
+    const pageSize = currentBook?.pageSize || 'A4';
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
+
     // 绝对定位尺寸
     const boxStyle: React.CSSProperties = {
         position: 'absolute',
-        left: `${element.x}%`,
-        top: `${element.y}%`,
-        width: `${element.width}%`,
-        height: `${element.height}%`,
+        left: `${(element.x / virtualWidth) * 100}%`,
+        top: `${(element.y / virtualHeight) * 100}%`,
+        width: `${(element.width / virtualWidth) * 100}%`,
+        height: `${(element.height / virtualHeight) * 100}%`,
         transform: `rotate(${element.rotate || 0}deg)`,
         zIndex: element.zIndex || 10,
         pointerEvents: readOnly ? 'none' : 'auto',

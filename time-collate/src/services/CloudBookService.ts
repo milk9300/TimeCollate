@@ -15,7 +15,7 @@ export class CloudBookService implements IBookService {
             baseURL: baseUrl,
         });
 
-        // 核心：绑定拦截器以自动注入 Token
+        // 核心：绑定请求拦截器以自动注入 Token
         this.api.interceptors.request.use((config) => {
             const token = useAuthStore.getState().token;
             if (token) {
@@ -23,6 +23,20 @@ export class CloudBookService implements IBookService {
             }
             return config;
         });
+
+        // 核心：绑定响应拦截器以捕获 401 并自动退出登录
+        this.api.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                if (error.response?.status === 401) {
+                    const { isAuthenticated, logout } = useAuthStore.getState();
+                    if (isAuthenticated) {
+                        logout();
+                    }
+                }
+                return Promise.reject(error);
+            }
+        );
     }
 
     async getBooks(page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<Book>> {

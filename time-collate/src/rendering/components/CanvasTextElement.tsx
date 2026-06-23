@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { TextElement, CanvasElement } from '../../types';
 import { useBookStore } from '../../store';
 import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
+import { getVirtualDimensions } from '../PhysicalConstants';
 import { useCanvasElementTransform } from '../../features/editor/hooks/useCanvasElementTransform';
 
 interface CanvasTextElementProps {
@@ -101,13 +102,17 @@ export const CanvasTextElement: React.FC<CanvasTextElementProps> = ({
 
     const displayValue = localValue || '双击编辑文本';
 
+    const currentBook = useBookStore(state => state.currentBook);
+    const pageSize = currentBook?.pageSize || 'A4';
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
+
     // 绝对定位盒样式
     const boxStyle: React.CSSProperties = {
         position: 'absolute',
-        left: `${element.x}%`,
-        top: `${element.y}%`,
-        width: `${element.width}%`,
-        height: `${element.height}%`,
+        left: `${(element.x / virtualWidth) * 100}%`,
+        top: `${(element.y / virtualHeight) * 100}%`,
+        width: `${(element.width / virtualWidth) * 100}%`,
+        height: `${(element.height / virtualHeight) * 100}%`,
         transform: `rotate(${element.rotate || 0}deg)`,
         zIndex: element.zIndex || 10,
         pointerEvents: readOnly ? 'none' : 'auto',

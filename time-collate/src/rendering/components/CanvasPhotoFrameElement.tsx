@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import type { PhotoFrameElement, CanvasElement } from '../../types';
 import { useBookStore } from '../../store';
 import { useAssetStore } from '../../store/useAssetStore';
+import { getVirtualDimensions } from '../PhysicalConstants';
 import { getBookService } from '../../services/serviceFactory';
 import { Plus, Check, Crop, Sliders } from 'lucide-react';
 import { getThumbnailUrl } from '../../utils/cdn';
@@ -310,13 +311,17 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
 
     const photo = element.photo;
 
+    const currentBook = useBookStore(state => state.currentBook);
+    const pageSize = currentBook?.pageSize || 'A4';
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
+
     // 绝对定位尺寸
     const boxStyle: React.CSSProperties = {
         position: 'absolute',
-        left: `${element.x}%`,
-        top: `${element.y}%`,
-        width: `${element.width}%`,
-        height: `${element.height}%`,
+        left: `${(element.x / virtualWidth) * 100}%`,
+        top: `${(element.y / virtualHeight) * 100}%`,
+        width: `${(element.width / virtualWidth) * 100}%`,
+        height: `${(element.height / virtualHeight) * 100}%`,
         transform: `rotate(${element.rotate || 0}deg)`,
         zIndex: element.zIndex || 10,
     };

@@ -3,6 +3,7 @@ import type { StickerElement, CanvasElement } from '../../types';
 import { STICKER_ASSETS } from '../StickerAssets';
 import { useAssetStore } from '../../store/useAssetStore';
 import { useBookStore } from '../../store';
+import { getVirtualDimensions } from '../PhysicalConstants';
 import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 import { useCanvasElementTransform } from '../../features/editor/hooks/useCanvasElementTransform';
 
@@ -56,13 +57,17 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
         });
     };
 
+    const currentBook = useBookStore(state => state.currentBook);
+    const pageSize = currentBook?.pageSize || 'A4';
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
+
     // 绝对定位样式
     const boxStyle: React.CSSProperties = {
         position: 'absolute',
-        left: `${element.x}%`,
-        top: `${element.y}%`,
-        width: `${element.width}%`,
-        height: `${element.height}%`,
+        left: `${(element.x / virtualWidth) * 100}%`,
+        top: `${(element.y / virtualHeight) * 100}%`,
+        width: `${(element.width / virtualWidth) * 100}%`,
+        height: `${(element.height / virtualHeight) * 100}%`,
         transform: `translate(-50%, -50%) rotate(${element.rotate || 0}deg)`,
         zIndex: element.zIndex || 20,
         userSelect: 'none',

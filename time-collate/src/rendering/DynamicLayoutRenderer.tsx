@@ -7,6 +7,7 @@ import { CanvasPhotoFrameElement } from './components/CanvasPhotoFrameElement';
 import { CanvasStickerElement } from './components/CanvasStickerElement';
 import { CanvasShapeElement } from './components/CanvasShapeElement';
 import { adaptV1ToV2 } from '../utils/canvasMigrationAdapter';
+import { getVirtualDimensions } from './PhysicalConstants';
 
 interface DynamicLayoutRendererProps {
     chapter: Chapter;
@@ -34,8 +35,12 @@ export const DynamicLayoutRenderer: React.FC<DynamicLayoutRendererProps> = ({ ch
     // 判断当前页面是否为 V2.0 画布页面
     const isV2 = Array.isArray(page.elements);
 
+    const currentBook = useBookStore((state) => state.currentBook);
+    const pageSize = currentBook?.pageSize || 'A4';
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
+
     // 内存对齐适配：如果是 legacy，运行适配器获得 V2.0 格式的数据结构
-    const adapted = !isV2 ? adaptV1ToV2(page, chapter, template) : null;
+    const adapted = !isV2 ? adaptV1ToV2(page, chapter, template, pageSize) : null;
     const elements = isV2 ? page.elements! : (adapted?.elements || []);
     const background = isV2 ? page.background : adapted?.background;
 
@@ -202,7 +207,7 @@ export const DynamicLayoutRenderer: React.FC<DynamicLayoutRendererProps> = ({ ch
                         <div
                             key={`v-${idx}`}
                             className="absolute top-0 bottom-0 border-l border-dashed border-[#8b3dff] z-50 pointer-events-none"
-                            style={{ left: `${line.val}%` }}
+                            style={{ left: `${(line.val / virtualWidth) * 100}%` }}
                         />
                     );
                 } else {
@@ -210,7 +215,7 @@ export const DynamicLayoutRenderer: React.FC<DynamicLayoutRendererProps> = ({ ch
                         <div
                             key={`h-${idx}`}
                             className="absolute left-0 right-0 border-t border-dashed border-[#8b3dff] z-50 pointer-events-none"
-                            style={{ top: `${line.val}%` }}
+                            style={{ top: `${(line.val / virtualHeight) * 100}%` }}
                         />
                     );
                 }

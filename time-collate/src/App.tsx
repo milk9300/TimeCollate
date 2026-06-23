@@ -39,7 +39,7 @@ import { AdminGuard } from './features/admin/components/AdminGuard';
 // 配置基础地址
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL;
 
-// 全局 Axios 拦截器，自动注入 Token
+// 全局 Axios 请求拦截器，自动注入 Token
 axios.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token) {
@@ -47,6 +47,20 @@ axios.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// 全局 Axios 响应拦截器，捕获 401 未授权错误，自动清除 Token 并重定向至登录页
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const { isAuthenticated, logout } = useAuthStore.getState();
+      if (isAuthenticated) {
+        logout();
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 /**
  * 路由守卫组件

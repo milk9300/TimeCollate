@@ -75,10 +75,10 @@ export type CanvasElementType = 'photo-frame' | 'text' | 'sticker' | 'shape';
 export interface BaseCanvasElement {
   id: string;
   type: CanvasElementType;
-  x: number;       // 百分比相对坐标系 (0 - 100)
-  y: number;       // 百分比相对坐标系 (0 - 100)
-  width: number;   // 百分比宽度 (0 - 100)
-  height: number;  // 百分比高度 (0 - 100)
+  x: number;       // 虚拟视口绝对坐标系 (例如 A4 宽度基底 1000)
+  y: number;       // 虚拟视口绝对坐标系 (例如 A4 高度基底 1414)
+  width: number;   // 虚拟宽度 (例如 1000)
+  height: number;  // 虚拟高度 (例如 1414)
   rotate: number;  // 顺时针旋转角度 (-360 - 360)
   zIndex: number;  // 图层顺序
   groupId?: string; // 逻辑分组 ID
@@ -197,6 +197,7 @@ export interface Book {
   pages: Page[];
   theme: string; // 改为 string 以支持内置主题 and 动态主题 ID
   pageSize: PageSize; // 新增：印刷纸张尺寸
+  coordinateSystem?: string; // 坐标系统标识 (例如 'virtual')
   coverUrl?: string;
   coverThumbnailUrl?: string;
   coverOssKey?: string;

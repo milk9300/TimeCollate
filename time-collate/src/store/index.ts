@@ -5,6 +5,7 @@ import { useAuthStore } from './useAuthStore';
 import { DEFAULT_TEMPLATES } from '../rendering/defaultTemplates';
 import axios from 'axios';
 import { debounce } from '../utils/debounce';
+import { migrateBookToVirtualCoords } from '../utils/canvasMigrationAdapter';
 
 // 获取 Service 单例（内部根据环境变量切换 Local/Cloud）
 const bookService = getBookService();
@@ -433,16 +434,24 @@ export const useBookStore = create<BookState>((set, get) => {
             set({ isLoading: true, error: null });
             try {
                 const book = await bookService.getBook(id);
-                set({
-                    currentBook: book,
-                    isLoading: false,
-                    historyPast: [],
-                    historyFuture: [],
-                    editorScope: 'chapters',
-                    activePhotoEdit: null,
-                    activeTextEdit: null,
-                    activeStickerEdit: null
-                });
+                if (book) {
+                    const migratedBook = migrateBookToVirtualCoords(book);
+                    if (book.coordinateSystem !== 'virtual') {
+                        await bookService.saveBook(migratedBook);
+                    }
+                    set({
+                        currentBook: migratedBook,
+                        isLoading: false,
+                        historyPast: [],
+                        historyFuture: [],
+                        editorScope: 'chapters',
+                        activePhotoEdit: null,
+                        activeTextEdit: null,
+                        activeStickerEdit: null
+                    });
+                } else {
+                    set({ isLoading: false, error: '加载作品失败: 未找到对应作品' });
+                }
                 // 异步预载模板和主题
                 get().loadTemplates();
                 get().loadThemes();
@@ -460,8 +469,12 @@ export const useBookStore = create<BookState>((set, get) => {
                 if (response.items.length > 0) {
                     const fullBook = await bookService.getBook(response.items[0].id);
                     if (fullBook) {
+                        const migratedBook = migrateBookToVirtualCoords(fullBook);
+                        if (fullBook.coordinateSystem !== 'virtual') {
+                            await bookService.saveBook(migratedBook);
+                        }
                         set({
-                            currentBook: fullBook,
+                            currentBook: migratedBook,
                             isLoading: false,
                             historyPast: [],
                             historyFuture: [],
@@ -486,7 +499,8 @@ export const useBookStore = create<BookState>((set, get) => {
                     pages: [],
                     theme: 'classic',
                     pageSize: 'A4',
-                    showPreface: true
+                    showPreface: true,
+                    coordinateSystem: 'virtual'
                 };
                 await bookService.saveBook(newBook);
                 set({

@@ -1,6 +1,8 @@
-import type { Page, Chapter, CanvasElement, CanvasBackgroundConfig, PhotoFrameElement, TextElement, StickerElement } from '../types';
+import type { Page, Chapter, CanvasElement, CanvasBackgroundConfig, PhotoFrameElement, TextElement, StickerElement, Book } from '../types';
 import { getSlotText, getSlotStyle, parsePageContent, getPageDecorations, getPageBackgroundImage } from './textSlotHelper';
 import { getPhotoForSlot } from './slotHelper';
+import { getVirtualDimensions } from '../rendering/PhysicalConstants';
+import type { PageSize } from '../rendering/PhysicalConstants';
 
 function parsePercent(val: string | number | undefined, defaultVal = 0): number {
     if (val === undefined) return defaultVal;
@@ -16,12 +18,13 @@ function parsePercent(val: string | number | undefined, defaultVal = 0): number 
 export function adaptV1ToV2(
     page: Page,
     chapter: Chapter,
-    template: any
+    template: any,
+    pageSize: PageSize = 'A4'
 ): { elements: CanvasElement[]; background: CanvasBackgroundConfig } {
     if (!template || !template.layoutSchema) {
         return { elements: [], background: {} };
     }
-
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
     const { layoutSchema } = template;
     const parsedContent = parsePageContent(page.content);
     const overrides = parsedContent.elementOverrides || {};
@@ -30,10 +33,10 @@ export function adaptV1ToV2(
     const elements: CanvasElement[] = layoutSchema.elements.map((el: any) => {
         // 读取槽位覆盖样式
         const override = overrides[el.id] || {};
-        const left = parsePercent(override.left ?? el.style.left, 0);
-        const top = parsePercent(override.top ?? el.style.top, 0);
-        const width = parsePercent(override.width ?? el.style.width, 0);
-        const height = parsePercent(override.height ?? el.style.height, 0);
+        const left = Math.round((parsePercent(override.left ?? el.style.left, 0) / 100) * virtualWidth);
+        const top = Math.round((parsePercent(override.top ?? el.style.top, 0) / 100) * virtualHeight);
+        const width = Math.round((parsePercent(override.width ?? el.style.width, 0) / 100) * virtualWidth);
+        const height = Math.round((parsePercent(override.height ?? el.style.height, 0) / 100) * virtualHeight);
 
         if (el.type === 'text') {
             let content = '';
@@ -118,13 +121,14 @@ export function adaptV1ToV2(
     // 2. 转换贴纸 (decorations)
     const decorations = getPageDecorations(page.content);
     decorations.forEach((dec, idx) => {
+        const sizeVirtualWidth = dec.size ? Math.round((dec.size / 300) * virtualWidth) : Math.round(0.1 * virtualWidth);
         elements.push({
             id: dec.id || `sticker-${Date.now()}-${idx}`,
             type: 'sticker',
-            x: dec.x,
-            y: dec.y,
-            width: dec.size ? (dec.size / 300) * 100 : 10, // 粗略转换大小为百分比坐标
-            height: dec.size ? (dec.size / 300) * 100 : 10,
+            x: Math.round((dec.x / 100) * virtualWidth),
+            y: Math.round((dec.y / 100) * virtualHeight),
+            width: sizeVirtualWidth,
+            height: sizeVirtualWidth,
             rotate: dec.rotate || 0,
             zIndex: 20 + idx,
             stickerConfig: {
@@ -143,3 +147,44 @@ export function adaptV1ToV2(
 
     return { elements, background };
 }
+
+/**
+ * @description 自动将已有 Book 数据中 Canvas 页面组件的百分比坐标转换为虚拟绝对坐标
+ */
+export function migrateBookToVirtualCoords(book: Book): Book {
+    if (!book || (book as any).coordinateSystem === 'virtual') {
+        return book;
+    }
+
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(book.pageSize || 'A4');
+    const migratedPages = book.pages.map(page => {
+        if (!page.elements || page.elements.length === 0) return page;
+
+        // 双重校验：若任何一个元素坐标显著超出 100，说明已经是虚拟坐标系数据，直接跳过此页
+        const alreadyVirtual = page.elements.some(el => el.x > 100 || el.width > 100 || el.y > 100 || el.height > 100);
+        if (alreadyVirtual) return page;
+
+        const migratedElements = page.elements.map(el => {
+            // 对于贴纸 (Stickers)，原有的 x, y 为百分比
+            return {
+                ...el,
+                x: Math.round((el.x / 100) * virtualWidth),
+                y: Math.round((el.y / 100) * virtualHeight),
+                width: Math.round((el.width / 100) * virtualWidth),
+                height: Math.round((el.height / 100) * virtualHeight)
+            };
+        });
+
+        return {
+            ...page,
+            elements: migratedElements
+        };
+    });
+
+    return {
+        ...book,
+        pages: migratedPages,
+        coordinateSystem: 'virtual'
+    } as any;
+}
+

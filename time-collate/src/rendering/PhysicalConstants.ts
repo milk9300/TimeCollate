@@ -33,3 +33,12 @@ export const PRINT_CONSTANTS = {
 };
 
 export type PageSize = keyof typeof PAGE_SIZES;
+
+export function getVirtualDimensions(pageSize: PageSize = 'A4') {
+    const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
+    return {
+        virtualWidth: 1000,
+        virtualHeight: Math.round(1000 * (dims.height / dims.width))
+    };
+}
+

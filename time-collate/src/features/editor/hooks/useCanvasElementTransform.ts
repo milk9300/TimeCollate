@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import type { CanvasElement } from '../../../types';
 import { useBookStore } from '../../../store';
+import { getVirtualDimensions } from '../../../rendering/PhysicalConstants';
 
 interface TransformState {
     type: 'move' | 'resize' | 'rotate' | null;
@@ -14,7 +15,7 @@ interface TransformState {
     direction?: string;
 }
 
-const SNAP_THRESHOLD = 1.0; // 百分比吸附阈值 (1%)
+const SNAP_THRESHOLD = 10; // 虚拟单位吸附阈值 (对应宽度的 1%)
 
 export function useCanvasElementTransform(
     element: CanvasElement,
@@ -24,6 +25,10 @@ export function useCanvasElementTransform(
 ) {
     const transformStateRef = useRef<TransformState | null>(null);
     const [isTransforming, setIsTransforming] = useState(false);
+
+    const currentBook = useBookStore(state => state.currentBook);
+    const pageSize = currentBook?.pageSize || 'A4';
+    const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
 
     // 获取并重设对齐辅助线的 Zustand 属性
     const setAlignLines = (lines: any[]) => {
@@ -44,15 +49,15 @@ export function useCanvasElementTransform(
 
         // 收集对齐参考点 (左, 中, 右, 上, 中, 下)
         const referencePointsX: { val: number; desc: string }[] = [
-            { val: 5, desc: 'left-margin' },
-            { val: 50, desc: 'center' },
-            { val: 95, desc: 'right-margin' }
+            { val: Math.round(0.05 * virtualWidth), desc: 'left-margin' },
+            { val: Math.round(0.50 * virtualWidth), desc: 'center' },
+            { val: Math.round(0.95 * virtualWidth), desc: 'right-margin' }
         ];
 
         const referencePointsY: { val: number; desc: string }[] = [
-            { val: 5, desc: 'top-margin' },
-            { val: 50, desc: 'center' },
-            { val: 95, desc: 'bottom-margin' }
+            { val: Math.round(0.05 * virtualHeight), desc: 'top-margin' },
+            { val: Math.round(0.50 * virtualHeight), desc: 'center' },
+            { val: Math.round(0.95 * virtualHeight), desc: 'bottom-margin' }
         ];
 
         // 从兄弟元素提取对齐点
@@ -180,13 +185,13 @@ export function useCanvasElementTransform(
             const dx = moveEvent.clientX - transformState.startX;
             const dy = moveEvent.clientY - transformState.startY;
 
-            // 转换像素 delta 为父画布百分比
-            const dxPct = (dx / canvasW) * 100;
-            const dyPct = (dy / canvasH) * 100;
+            // 转换像素 delta 为父画布虚拟坐标偏移
+            const dxVirtual = (dx / canvasW) * virtualWidth;
+            const dyVirtual = (dy / canvasH) * virtualHeight;
 
             if (transformState.type === 'move') {
-                let targetX = transformState.startElementX + dxPct;
-                let targetY = transformState.startElementY + dyPct;
+                let targetX = transformState.startElementX + dxVirtual;
+                let targetY = transformState.startElementY + dyVirtual;
 
                 // 计算对齐辅助吸附
                 const { snappedX, snappedY, lines } = calculateSnapping(
@@ -210,25 +215,25 @@ export function useCanvasElementTransform(
                 let newW = transformState.startElementW;
                 let newH = transformState.startElementH;
 
-                // 根据不同控制柄计算拉伸
+                // 根据不同控制柄计算拉伸 (拉伸下限限制在 10 虚拟单位)
                 if (dir?.includes('e')) {
-                    newW = Math.max(5, transformState.startElementW + dxPct);
+                    newW = Math.max(10, transformState.startElementW + dxVirtual);
                 }
                 if (dir?.includes('w')) {
-                    const candidateW = transformState.startElementW - dxPct;
-                    if (candidateW >= 5) {
+                    const candidateW = transformState.startElementW - dxVirtual;
+                    if (candidateW >= 10) {
                         newW = candidateW;
-                        newX = transformState.startElementX + dxPct;
+                        newX = transformState.startElementX + dxVirtual;
                     }
                 }
                 if (dir?.includes('s')) {
-                    newH = Math.max(5, transformState.startElementH + dyPct);
+                    newH = Math.max(10, transformState.startElementH + dyVirtual);
                 }
                 if (dir?.includes('n')) {
-                    const candidateH = transformState.startElementH - dyPct;
-                    if (candidateH >= 5) {
+                    const candidateH = transformState.startElementH - dyVirtual;
+                    if (candidateH >= 10) {
                         newH = candidateH;
-                        newY = transformState.startElementY + dyPct;
+                        newY = transformState.startElementY + dyVirtual;
                     }
                 }
 
@@ -239,10 +244,10 @@ export function useCanvasElementTransform(
                     height: newH
                 });
             } else if (transformState.type === 'rotate') {
-                // 计算旋转角度 (atan2)
+                // 计算旋转中心点绝对像素坐标
                 const centerPoint = {
-                    x: rect.left + (element.x + element.width / 2) * (canvasW / 100),
-                    y: rect.top + (element.y + element.height / 2) * (canvasH / 100)
+                    x: rect.left + ((element.x + element.width / 2) / virtualWidth) * canvasW,
+                    y: rect.top + ((element.y + element.height / 2) / virtualHeight) * canvasH
                 };
 
                 const startAngle = Math.atan2(
