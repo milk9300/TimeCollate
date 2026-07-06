@@ -424,21 +424,45 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
 
     const editorScope = useBookStore(state => state.editorScope);
     const setEditorScope = useBookStore(state => state.setEditorScope);
+    const activeFrontPage = useBookStore(state => state.activeFrontPage);
+    const setActiveFrontPage = useBookStore(state => state.setActiveFrontPage);
 
     const isEditingCover = editorScope === 'cover';
 
     const onSelectCover = () => {
         setEditorScope('cover');
+        setActiveFrontPage('cover');
+    };
+
+    const onSelectBackCover = () => {
+        setEditorScope('cover');
+        setActiveFrontPage('backCover');
     };
 
     // 折叠状态（图标栏模式）- 默认收起目录面板
     const [isCollapsed, setIsCollapsed] = useState(true);
 
+    const documents = useBookStore(state => state.documents);
+
+    const convertedPages = React.useMemo(() => {
+        return documents.map(d => ({
+            id: d.id,
+            pageTitle: d.title,
+            isChapterStart: d.isChapterStart,
+            templateId: d.templateId || 'custom',
+            elements: d.elements,
+            background: d.background,
+            thumbnail: d.thumbnail,
+            pageType: d.type === 'cover' ? ('cover' as const) : ('content' as const),
+            content: '',
+            photos: []
+        }));
+    }, [documents]);
+
     // 虚拟章节列表
     const chapters = React.useMemo(() => {
-        if (!currentBook || !currentBook.pages) return [];
-        return getVirtualChapters(currentBook.pages);
-    }, [currentBook]);
+        return getVirtualChapters(convertedPages);
+    }, [convertedPages]);
 
     // 右键上下文菜单 ID
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -538,12 +562,12 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                 <div className="w-6 h-[1px] bg-gray-200" />
 
                 {editorScope === 'cover' ? (
-                    <>
+                    <div className="flex flex-col gap-2.5">
                         {/* 封面快捷键 */}
                         <button
                             onClick={onSelectCover}
                             className={`p-2 rounded-xl border transition-all ${
-                                isEditingCover 
+                                isEditingCover && activeFrontPage === 'cover'
                                     ? 'bg-indigo-650 text-white border-indigo-650 shadow-md' 
                                     : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-250/80'
                             }`}
@@ -551,7 +575,19 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                         >
                             <BookOpen size={14} />
                         </button>
-                    </>
+                        {/* 封底快捷键 */}
+                        <button
+                            onClick={onSelectBackCover}
+                            className={`p-2 rounded-xl border transition-all ${
+                                isEditingCover && activeFrontPage === 'backCover'
+                                    ? 'bg-indigo-650 text-white border-indigo-650 shadow-md' 
+                                    : 'bg-white hover:bg-gray-100 text-gray-500 border-gray-250/80'
+                            }`}
+                            title="书籍封底"
+                        >
+                            <BookOpen size={14} className="rotate-180" />
+                        </button>
+                    </div>
                 ) : (
                     /* 章节编号环与序言快捷键 */
                     <div className="flex flex-col gap-2.5 overflow-y-auto w-full items-center custom-scrollbar flex-1">
@@ -628,7 +664,7 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                         <div
                             onClick={onSelectCover}
                             className={`pl-3 pr-2 py-2 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-between group ${
-                                isEditingCover
+                                isEditingCover && activeFrontPage === 'cover'
                                     ? 'border-indigo-500/80 bg-indigo-50/15 text-indigo-950 font-bold shadow-sm'
                                     : 'border-gray-200/50 bg-white hover:bg-gray-50/50 hover:border-gray-300 text-gray-700'
                             }`}
@@ -639,6 +675,24 @@ export const SpreadNavigator: React.FC<SpreadNavigatorProps> = ({
                             </div>
                             <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 group-hover:bg-indigo-100/40 group-hover:text-indigo-600 transition-colors">
                                 Cover
+                            </span>
+                        </div>
+
+                        {/* 2. 1. 封底 条目 */}
+                        <div
+                            onClick={onSelectBackCover}
+                            className={`pl-3 pr-2 py-2 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-between group mt-2 ${
+                                isEditingCover && activeFrontPage === 'backCover'
+                                    ? 'border-indigo-500/80 bg-indigo-50/15 text-indigo-950 font-bold shadow-sm'
+                                    : 'border-gray-200/50 bg-white hover:bg-gray-50/50 hover:border-gray-300 text-gray-700'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 group-hover:text-gray-600 font-mono">□ 1.</span>
+                                <span className="text-[11px] font-bold">封底</span>
+                            </div>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 group-hover:bg-indigo-100/40 group-hover:text-indigo-600 transition-colors">
+                                Back
                             </span>
                         </div>
                     </>

@@ -124,10 +124,10 @@ export class AdminService {
         // 4. 内容生态与活跃风向标 (ecosystem)
         // 模板套用热度榜前 5
         const [templateRows] = await pool.query<RowDataPacket[]>(`
-            SELECT p.layout as templateId, COUNT(*) as count, t.name as templateName
+            SELECT p.template_id as templateId, COUNT(*) as count, t.name as templateName
             FROM pages p
-            JOIN book_templates t ON p.layout = t.id
-            GROUP BY p.layout, t.name
+            JOIN page_templates t ON p.template_id = t.id
+            GROUP BY p.template_id, t.name
             ORDER BY count DESC
             LIMIT 5
         `);

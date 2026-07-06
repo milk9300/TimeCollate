@@ -48,7 +48,7 @@ export const BottomTray: React.FC<BottomTrayProps> = ({
     const activePage = activeChapter?.pages.find(p => p.id === targetPageId);
 
     const photos = (activePage?.photos || []).filter(p => p && p.url);
-    const activeTemplate = templates.find(t => t.id === activePage?.layout);
+    const activeTemplate = templates.find(t => t.id === activePage?.templateId);
 
     // Compute the set of actually used photos on the active page
     const usedPhotoIds = new Set<string>();

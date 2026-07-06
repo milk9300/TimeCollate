@@ -39,7 +39,10 @@ export const Reader: React.FC = () => {
                 ]);
 
                 if (data) {
-                    setBook(data);
+                    setBook({
+                        ...data.book,
+                        pages: data.pages
+                    });
                 } else {
                     setError('无法加载该书籍');
                 }
@@ -110,7 +113,7 @@ export const Reader: React.FC = () => {
     // 成功加载：直接渲染 FlipBook
     // onClose 设为 navigate('/square') 使其返回广场
     return (
-        <ThemeProvider theme={book.theme}>
+        <ThemeProvider theme="classic">
             <FlipBook
                 book={book}
                 onClose={() => navigate(fromPath)}

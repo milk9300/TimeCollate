@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getBookService } from '../../../services/serviceFactory';
-import type { Book } from '../../../types';
+import type { Book, Page } from '../../../types';
 import { BookRenderer } from '../../../rendering/BookRenderer';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
 import { useBookStore, getVirtualChapters } from '../../../store';
@@ -70,7 +70,28 @@ export const Preview: React.FC = () => {
                     useBookStore.getState().loadTemplates(),
                     useMarketStore.getState().fetchMarketAssets(),
                 ]);
-                setBook(data);
+                if (data) {
+                    const pages = [...(data.pages || [])];
+                    if (data.cover) {
+                        pages.unshift({
+                            id: data.cover.id,
+                            bookId: data.book.id,
+                            pageTitle: '书封',
+                            isChapterStart: false,
+                            content: '',
+                            photos: [],
+                            templateId: 'book-cover',
+                            sortOrder: -1,
+                            elements: data.cover.frontElements || [],
+                            background: data.cover.frontBackground || { color: '#FFFFFF', gridPattern: false },
+                            pageType: 'cover'
+                        });
+                    }
+                    setBook({
+                        ...data.book,
+                        pages: pages
+                    });
+                }
 
                 // 普通预览模式也尝试发送信号（不影响正常使用）
                 if (typeof (window as any).onPdfReady === 'function') {
@@ -89,13 +110,19 @@ export const Preview: React.FC = () => {
     if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
     if (error || !book) return <div className="flex items-center justify-center h-screen text-red-500">{error || 'Book not found'}</div>;
 
+    // 1. 获取封面页
+    const coverPage = React.useMemo(() => {
+        if (!book || !book.pages) return null;
+        return book.pages.find(p => p.pageType === 'cover') || null;
+    }, [book]);
+
     const chapters = React.useMemo(() => {
         if (!book || !book.pages) return [];
         return getVirtualChapters(book.pages);
     }, [book]);
 
     return (
-        <ThemeProvider theme={book.theme}>
+        <ThemeProvider theme="classic">
             <div className="min-h-screen bg-gray-100 print:bg-white flex flex-col items-center py-8 print:py-0">
                 <style>
                     {`
@@ -106,6 +133,22 @@ export const Preview: React.FC = () => {
                     `}
                 </style>
 
+                {/* 1. 渲染封面 (Front Cover) */}
+                {coverPage && (
+                    <div
+                        data-pdf-page="cover"
+                        className="mb-8 print:mb-0 shadow-lg print:shadow-none"
+                    >
+                        <BookRenderer
+                            page={coverPage}
+                            pageSize={book.pageSize}
+                            book={book}
+                            readOnly={true}
+                        />
+                    </div>
+                )}
+
+                {/* 3. 渲染正文章节 (Content Chapters) */}
                 {chapters.map((chapter, cIndex) => (
                     <div key={chapter.id} className="contents">
                         {chapter.pages.map((page, pIndex) => (
@@ -126,6 +169,19 @@ export const Preview: React.FC = () => {
                         ))}
                     </div>
                 ))}
+
+                {/* 4. 渲染封底 (Back Cover) */}
+                <div
+                    data-pdf-page="back-cover"
+                    className="mb-8 print:mb-0 shadow-lg print:shadow-none"
+                >
+                    <BookRenderer
+                        page={{ id: 'virtual-back-cover', content: '', photos: [], templateId: 'back-cover' }}
+                        pageSize={book.pageSize}
+                        book={book}
+                        readOnly={true}
+                    />
+                </div>
             </div>
         </ThemeProvider>
     );

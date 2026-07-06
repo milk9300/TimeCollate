@@ -160,6 +160,7 @@ exports.handler = async (event, context) => {
                 const authState = {
                     state: {
                         token: t,
+                        refreshToken: '',
                         user: u,
                         isAuthenticated: true
                     },
@@ -340,6 +341,7 @@ exports.handler = async (event, context) => {
             const authState = {
                 state: {
                     token: t,
+                    refreshToken: '',
                     user: u,
                     isAuthenticated: true
                 },

@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBookStore, getVirtualChapters } from '../../../store';
 import { useAssetStore } from '../../../store/useAssetStore';
+import { editorFacade } from '../runtime/EditorFacade';
+import { historyObserver } from '../runtime/services/HistoryObserver';
 import { SpreadNavigator } from '../components/SpreadNavigator';
 import { ConfirmModal } from '../../common/components/ConfirmModal';
 import { FlipBook } from '../../../rendering/FlipBook';
@@ -39,6 +41,7 @@ export function Editor() {
     const currentBook = useBookStore(state => state.currentBook);
     const loadBook = useBookStore(state => state.loadBook);
     const isLoading = useBookStore(state => state.isLoading);
+    const error = useBookStore(state => state.error);
     const updateBookSettings = useBookStore(state => state.updateBookSettings);
     const editorMode = useBookStore(state => state.editorMode);
     const setEditorMode = useBookStore(state => state.setEditorMode);
@@ -59,6 +62,10 @@ export function Editor() {
     const saveStatus = useBookStore(state => state.saveStatus);
     const triggerSaveBook = useBookStore(state => state.triggerSaveBook);
     const flushSaveBook = useBookStore(state => state.flushSaveBook);
+
+    const enableCommandHistory = useBookStore(state => state.enableCommandHistory);
+    const commandCanUndo = useBookStore(state => state.commandCanUndo);
+    const commandCanRedo = useBookStore(state => state.commandCanRedo);
 
     // 2. 派生虚拟章节信息
     const chapters = useMemo(() => {
@@ -100,8 +107,19 @@ export function Editor() {
         return () => window.removeEventListener('resize', checkDevice);
     }, []);
 
+    // 正式激活新历史栈热切换上线测试
+    useEffect(() => {
+        editorFacade.setEnableCommandHistory(true);
+        historyObserver.clear();
+        return () => {
+            editorFacade.setEnableCommandHistory(false);
+            historyObserver.clear();
+        };
+    }, []);
+
     // 5. 挂载时加载书籍与排版模板，卸载时强制同步保存
     useEffect(() => {
+        useBookStore.setState({ currentBook: null });
         if (bookId) {
             loadBook(bookId);
         } else if (templateId) {
@@ -135,14 +153,13 @@ export function Editor() {
                         author: '设计师',
                         type: 'template',
                         createdAt: templateData.createdAt || Date.now(),
-                        theme: 'classic',
                         pageSize: 'A4',
                         pages: [
                             {
                                 id: `temp-page-${templateData.id}`,
                                 content: '',
                                 photos: [],
-                                layout: templateData.id,
+                                templateId: templateData.id,
                                 elements: templateData.layoutSchema?.elements || [],
                                 background: templateData.layoutSchema?.background || { color: '#FFFFFF', gridPattern: false }
                             }
@@ -207,6 +224,22 @@ export function Editor() {
         }
     }, [activeChapterId, chapters]);
 
+    // 当新建排版模板自动保存并生成正式模板 ID 时，同步更新本地 activePageId 和 activeChapterId 以防白屏
+    useEffect(() => {
+        if (templateId && currentBook && currentBook.pages.length > 0) {
+            const hasActivePage = currentBook.pages.some(p => p.id === activePageId);
+            if (!hasActivePage && activePageId !== null) {
+                const latestChapters = getVirtualChapters(currentBook.pages);
+                if (latestChapters.length > 0) {
+                    setActiveChapterId(latestChapters[0].id);
+                    if (latestChapters[0].pages.length > 0) {
+                        setActivePageId(latestChapters[0].pages[0].id);
+                    }
+                }
+            }
+        }
+    }, [currentBook, activePageId, templateId]);
+
     // Legacy activePhotoEdit hook removed to respect new Canva inspector workflow
 
     // 当视图切换到「书封」时，不主动开启侧边栏，由用户触发（点击右侧 dock 选项卡）
@@ -263,19 +296,19 @@ export function Editor() {
             } else if (isCmdOrCtrl && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 if (e.shiftKey) {
-                    if (historyFuture.length > 0) redo();
+                    if (enableCommandHistory ? commandCanRedo : historyFuture.length > 0) redo();
                 } else {
-                    if (historyPast.length > 0) undo();
+                    if (enableCommandHistory ? commandCanUndo : historyPast.length > 0) undo();
                 }
             } else if (isCmdOrCtrl && e.key.toLowerCase() === 'y') {
                 e.preventDefault();
-                if (historyFuture.length > 0) redo();
+                if (enableCommandHistory ? commandCanRedo : historyFuture.length > 0) redo();
             }
         };
 
         window.addEventListener('keydown', handleKeys);
         return () => window.removeEventListener('keydown', handleKeys);
-    }, [historyPast.length, historyFuture.length, undo, redo, setEditorMode]);
+    }, [historyPast.length, historyFuture.length, commandCanUndo, commandCanRedo, enableCommandHistory, undo, redo, setEditorMode]);
 
     // 缩放控制
     const handleZoomIn = useCallback(() => canvasRef.current?.zoomIn(), []);
@@ -296,13 +329,6 @@ export function Editor() {
         setActivePhotoEdit(null);
     }, [setActivePhotoEdit, setEditorScope, setActiveFrontPage]);
 
-    const handleSelectPreface = useCallback(() => {
-        setEditorScope('cover');
-        setActiveFrontPage('preface');
-        setActiveChapterId(null);
-        setActivePageId(null);
-        setActivePhotoEdit(null);
-    }, [setActivePhotoEdit, setEditorScope, setActiveFrontPage]);
 
     const handleBack = useCallback(() => navigate('/workbench'), [navigate]);
 
@@ -317,6 +343,9 @@ export function Editor() {
             alert('解锁失败，请重试');
         }
     };
+ 
+    const isUndoDisabled = enableCommandHistory ? !commandCanUndo : historyPast.length === 0;
+    const isRedoDisabled = enableCommandHistory ? !commandCanRedo : historyFuture.length === 0;
 
     if (isMobile) {
         return <MobilePromo />;
@@ -326,6 +355,29 @@ export function Editor() {
         return (
             <div className="flex h-screen items-center justify-center bg-gray-50">
                 <div className="text-xl text-gray-400 animate-pulse font-medium">正在加载时光集...</div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4 px-6 select-none">
+                <div className="w-14 h-14 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center text-xl shadow-xs border border-rose-100/50">
+                    ⚠️
+                </div>
+                <h3 className="text-base font-black text-slate-800">无法加载模板编辑器</h3>
+                <p className="text-xs font-semibold text-slate-400 max-w-sm text-center leading-relaxed">
+                    {error}。您的账户可能在后端数据库中不具备管理员或设计师权限 (403 Forbidden)。
+                </p>
+                <button
+                    onClick={() => {
+                        useBookStore.setState({ error: null });
+                        navigate('/workbench');
+                    }}
+                    className="mt-2 px-6 py-2.5 bg-[#3A4454] hover:bg-[#2C3539] text-white rounded-xl font-bold text-xs.5 shadow-sm cursor-pointer transition-all active:scale-95"
+                >
+                    返回工作台
+                </button>
             </div>
         );
     }
@@ -345,7 +397,7 @@ export function Editor() {
     }
 
     return (
-        <ThemeProvider theme={currentBook.theme || 'classic'}>
+        <ThemeProvider theme="classic">
             <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900 font-sans select-none flex-col">
 
                 {/* 0. TopBar Header */}
@@ -390,7 +442,6 @@ export function Editor() {
                                     >
                                         <option value="content">内容页模板</option>
                                         <option value="cover">书封页模板</option>
-                                        <option value="preface">扉页模板</option>
                                         <option value="structural">过渡页模板</option>
                                     </select>
                                     <select
@@ -467,7 +518,7 @@ export function Editor() {
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={undo}
-                                disabled={historyPast.length === 0}
+                                disabled={isUndoDisabled}
                                 className="p-2 border border-gray-200 bg-white hover:bg-gray-50 rounded-full text-gray-500 disabled:opacity-30 disabled:hover:bg-white transition-all cursor-pointer shadow-sm"
                                 title="撤销操作 (Ctrl + Z)"
                             >
@@ -475,7 +526,7 @@ export function Editor() {
                             </button>
                             <button
                                 onClick={redo}
-                                disabled={historyFuture.length === 0}
+                                disabled={isRedoDisabled}
                                 className="p-2 border border-gray-200 bg-white hover:bg-gray-50 rounded-full text-gray-500 disabled:opacity-30 disabled:hover:bg-white transition-all cursor-pointer shadow-sm"
                                 title="重做操作 (Ctrl + Y)"
                             >
@@ -516,7 +567,7 @@ export function Editor() {
                 <div className="flex-1 flex w-full overflow-hidden relative">
 
                     {/* Column 1: LeftSpreadNavigator */}
-                    {!isFullscreenPreview && editorScope !== 'cover' && currentBook.type !== 'template' && (
+                    {!isFullscreenPreview && currentBook.type !== 'template' && (
                         <SpreadNavigator
                             activeChapterId={activeChapterId}
                             activePageId={activePageId}

@@ -84,7 +84,33 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
                     {/* 微缩纸张 */}
                     <div className="w-[100px] h-[141px] bg-white rounded-md border border-slate-200/50 shadow-[0_4px_12px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)] relative overflow-hidden transition-transform group-hover:scale-105 duration-300">
                         {elements.map((el) => {
-                            const isPhoto = el.type === 'photo';
+                            const isPhoto = el.type === 'photo' || el.type === 'photo-frame';
+                            
+                            let left = '0%';
+                            let top = '0%';
+                            let width = '100%';
+                            let height = '100%';
+                            let borderRadius = '2px';
+                            let borderWidth = '0px';
+                            let borderColor = 'transparent';
+
+                            if (el.style) {
+                                left = el.style.left;
+                                top = el.style.top;
+                                width = el.style.width;
+                                height = el.style.height;
+                                borderRadius = el.style.borderRadius ? `calc(${el.style.borderRadius} / 6)` : '2px';
+                                borderWidth = el.style.borderWidth ? `calc(${el.style.borderWidth} / 6)` : '0px';
+                                borderColor = el.style.borderColor || 'transparent';
+                            } else {
+                                const vWidth = 1000;
+                                const vHeight = 1414;
+                                left = `${((el.x || 0) / vWidth) * 100}%`;
+                                top = `${((el.y || 0) / vHeight) * 100}%`;
+                                width = `${((el.width || 0) / vWidth) * 100}%`;
+                                height = `${((el.height || 0) / vHeight) * 100}%`;
+                            }
+
                             return (
                                 <div
                                     key={el.id}
@@ -94,13 +120,13 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
                                             : 'bg-amber-50/40 border-amber-200/20 text-amber-500'
                                     }`}
                                     style={{
-                                        left: el.style.left,
-                                        top: el.style.top,
-                                        width: el.style.width,
-                                        height: el.style.height,
-                                        borderRadius: el.style.borderRadius ? `calc(${el.style.borderRadius} / 6)` : '2px',
-                                        borderWidth: el.style.borderWidth ? `calc(${el.style.borderWidth} / 6)` : '0px',
-                                        borderColor: el.style.borderColor || 'transparent',
+                                        left,
+                                        top,
+                                        width,
+                                        height,
+                                        borderRadius,
+                                        borderWidth,
+                                        borderColor,
                                     }}
                                 >
                                     {isPhoto ? (

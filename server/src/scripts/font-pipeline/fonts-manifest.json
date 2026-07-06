@@ -1,0 +1,110 @@
+[
+  {
+    "id": "noto-sans-sc",
+    "name": "Noto Sans SC",
+    "displayName": "思源黑体",
+    "source": "google",
+    "category": "sans-serif",
+    "language": ["zh", "en"],
+    "license": "OFL",
+    "author": "Google",
+    "previewText": "思源黑体，现代简约",
+    "tags": ["简约", "正文", "无衬线"]
+  },
+  {
+    "id": "noto-serif-sc",
+    "name": "Noto Serif SC",
+    "displayName": "思源宋体",
+    "source": "google",
+    "category": "serif",
+    "language": ["zh", "en"],
+    "license": "OFL",
+    "author": "Google",
+    "previewText": "思源宋体，优雅端庄",
+    "tags": ["经典", "衬线", "传统"]
+  },
+  {
+    "id": "ma-shan-zheng",
+    "name": "Ma Shan Zheng",
+    "displayName": "马善政毛笔体",
+    "source": "google",
+    "category": "handwriting",
+    "language": ["zh"],
+    "license": "OFL",
+    "author": "Ma Shan Zheng",
+    "previewText": "落笔苍劲，风骨傲然",
+    "tags": ["手写", "古风", "个性"]
+  },
+  {
+    "id": "zcool-kuaile",
+    "name": "ZCOOL KuaiLe",
+    "displayName": "站酷快乐体",
+    "source": "google",
+    "category": "display",
+    "language": ["zh"],
+    "license": "OFL",
+    "author": "ZCOOL",
+    "previewText": "快乐相伴，记录美好",
+    "tags": ["可爱", "创意", "标题"]
+  },
+  {
+    "id": "zcool-xiaowei",
+    "name": "ZCOOL XiaoWei",
+    "displayName": "站酷小薇体",
+    "source": "google",
+    "category": "serif",
+    "language": ["zh"],
+    "license": "OFL",
+    "author": "ZCOOL",
+    "previewText": "细致小巧，婉约柔美",
+    "tags": ["文艺", "清秀", "标题"]
+  },
+  {
+    "id": "zhi-mang-xing",
+    "name": "Zhi Mang Xing",
+    "displayName": "之芒行书",
+    "source": "google",
+    "category": "handwriting",
+    "language": ["zh"],
+    "license": "OFL",
+    "author": "Zhi Mang Xing",
+    "previewText": "行云流水，快意平生",
+    "tags": ["行书", "毛笔", "潇洒"]
+  },
+  {
+    "id": "long-cang",
+    "name": "Long Cang",
+    "displayName": "龙仓手写",
+    "source": "google",
+    "category": "handwriting",
+    "language": ["zh"],
+    "license": "OFL",
+    "author": "Long Cang",
+    "previewText": "随性而至，温暖记录",
+    "tags": ["文艺", "手写", "日常"]
+  },
+  {
+    "id": "inter",
+    "name": "Inter",
+    "displayName": "Inter (现代科技)",
+    "source": "google",
+    "category": "sans-serif",
+    "language": ["en"],
+    "license": "OFL",
+    "author": "Rasmus Andersson",
+    "previewText": "Inter modern layout",
+    "tags": ["英文", "科技", "极简"]
+  },
+  {
+    "id": "playfair-display",
+    "name": "Playfair Display",
+    "displayName": "Playfair Display (文艺衬线)",
+    "source": "google",
+    "category": "serif",
+    "language": ["en"],
+    "license": "OFL",
+    "author": "Claus Eggers Sørensen",
+    "previewText": "Playfair artistic style",
+    "tags": ["英文", "复古", "高雅"]
+  }
+]

@@ -29,8 +29,8 @@ export const DynamicLayoutRenderer: React.FC<DynamicLayoutRendererProps> = ({ ch
     const containerRef = React.useRef<HTMLDivElement>(null);
 
     // 查询当前版面所关联的模板
-    const template = templates.find((t) => t.id === page.layout) || 
-                      marketTemplates.find((t) => t.id === page.layout);
+    const template = templates.find((t) => t.id === page.templateId) || 
+                      marketTemplates.find((t) => t.id === page.templateId);
 
     // 判断当前页面是否为 V2.0 画布页面
     const isV2 = Array.isArray(page.elements);

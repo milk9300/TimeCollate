@@ -53,11 +53,11 @@ export class AliyunOssStorageService implements IStorageService {
      * 获取客户端直传的预签名 URL（PUT 方式上传）
      * 写入操作直接访问阿里云源端 API，避免 CDN 潜在的限制或缓存问题
      */
-    async getPresignedUploadUrl(originalName: string, contentType: string, expires?: number): Promise<{ uploadUrl: string; ossKey: string }> {
+    async getPresignedUploadUrl(originalName: string, contentType: string, expires?: number, customKey?: string): Promise<{ uploadUrl: string; ossKey: string }> {
         const ext = path.extname(originalName).toLowerCase();
         const dateFolder = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
         const fileName = `${uuidv4()}${ext}`;
-        const ossKey = `${config.oss.prefix}${dateFolder}/${fileName}`;
+        const ossKey = customKey || `${config.oss.prefix}${dateFolder}/${fileName}`;
 
         const cleanKey = ossKey.startsWith('/') ? ossKey.slice(1) : ossKey;
 
@@ -88,12 +88,9 @@ export class AliyunOssStorageService implements IStorageService {
         if (!key) return '';
         const cleanKey = key.startsWith('/') ? key.slice(1) : key;
 
-        const options: any = {
-            expires,
-        };
-
+        let processStr = '';
         if (style) {
-            let processStr = style;
+            processStr = style;
             if (style === 'thumbnail') {
                 // 编辑回显使用缩略图：缩放到300宽度，转为 WebP 格式，画质调为 60
                 processStr = 'image/resize,w_300/format,webp/quality,q_60';
@@ -101,27 +98,28 @@ export class AliyunOssStorageService implements IStorageService {
                 // 大图预览：缩放到1080宽度，转为 WebP 格式，画质为 80
                 processStr = 'image/resize,w_1080/format,webp/quality,q_80';
             }
-            options.process = processStr;
         }
 
-        let signedUrl = this.client.signatureUrl(cleanKey, options);
+        const querySuffix = processStr ? `?x-oss-process=${processStr}` : '';
 
+        // 如果配置了自定义域名，直接拼接自定义域名和 key（公共读且不带过期签名）
         if (config.oss.customDomain) {
             try {
-                const urlObj = new URL(signedUrl);
-                const customDomainUrl = new URL(config.oss.customDomain);
-                urlObj.protocol = customDomainUrl.protocol;
-                urlObj.host = customDomainUrl.host;
-                if (customDomainUrl.pathname !== '/') {
-                    urlObj.pathname = path.join(customDomainUrl.pathname, urlObj.pathname);
+                let baseDomain = config.oss.customDomain;
+                if (!/^https?:\/\//i.test(baseDomain)) {
+                    baseDomain = `https://${baseDomain}`;
                 }
-                signedUrl = urlObj.toString();
+                if (baseDomain.endsWith('/')) {
+                    baseDomain = baseDomain.slice(0, -1);
+                }
+                return `${baseDomain}/${cleanKey}${querySuffix}`;
             } catch (e) {
-                console.error('Failed to rewrite OSS URL with custom domain:', e);
+                console.error('Failed to format OSS URL with custom domain:', e);
             }
         }
 
-        return signedUrl;
+        // 备用：默认使用阿里云公共读域名拼接
+        return `https://${config.oss.bucket}.${config.oss.region}.aliyuncs.com/${cleanKey}${querySuffix}`;
     }
 
     /**
@@ -229,6 +227,28 @@ export class AliyunOssStorageService implements IStorageService {
             '.heif': 'image/heif',
         };
         return mimeTypes[ext] || 'application/octet-stream';
+    }
+
+    /**
+     * 为存储桶自动配置并更新 CORS 规则，允许跨域访问字体文件
+     */
+    async setupBucketCORS(): Promise<void> {
+        try {
+            console.log(`📡 正在为 OSS 存储桶 [${config.oss.bucket}] 配置 CORS 跨域规则...`);
+            const rules = [
+                {
+                    allowedOrigin: '*',
+                    allowedMethod: ['GET', 'POST', 'PUT', 'DELETE', 'HEAD'],
+                    allowedHeader: '*',
+                    exposeHeader: ['ETag', 'x-oss-request-id', 'Content-Length'],
+                    maxAgeSeconds: 3000
+                }
+            ];
+            await this.client.putBucketCORS(config.oss.bucket, rules as any);
+            console.log(`✅ OSS 跨域 CORS 规则配置成功！`);
+        } catch (err: any) {
+            console.warn(`⚠️ 无法自动配置 OSS CORS: ${err.message}。如果跨域报错，请手动到阿里云控制台为存储桶配置跨域（Allowed Origin: *）。`);
+        }
     }
 }
 

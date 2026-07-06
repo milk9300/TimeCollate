@@ -1,8 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { useBookStore, getVirtualChapters } from '../../../store';
+import { useBookStore, getVirtualChapters, useConvertedPages } from '../../../store';
 import { ImagePlus, Calendar, Plus, MoreHorizontal, FileText, Trash2, Settings, Layout, Info } from 'lucide-react';
 import { PAGE_SIZES, type PageSize } from '../../../rendering/PhysicalConstants';
-import { PREFACE_TEMPLATES, compilePrefaceText } from '../../../rendering/constants/prefaceTemplates';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy } from '@dnd-kit/sortable';
 import { SortablePhotoItem } from './SortablePhotoItem';
@@ -35,7 +34,6 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
         uploadPhotoToPage,
         deletePhotoFromPage,
         reorderPhotosInPage,
-        themes,
         templates
     } = useBookStore();
 
@@ -51,10 +49,10 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
 
     if (!currentBook) return null;
 
+    const pages = useConvertedPages();
     const chapters = React.useMemo(() => {
-        if (!currentBook || !currentBook.pages) return [];
-        return getVirtualChapters(currentBook.pages);
-    }, [currentBook]);
+        return getVirtualChapters(pages);
+    }, [pages]);
 
     if (!chapterId) {
         return (
@@ -179,83 +177,19 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
 
                 {showGlobalSettings && (
                     <div className="mt-4 space-y-5 pb-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {/* 引言 / 序言 */}
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">启用序言页</label>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={currentBook.showPreface !== false}
-                                        onChange={(e) => updateBookSettings({ showPreface: e.target.checked })}
-                                        className="sr-only peer"
-                                    />
-                                    <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
-                                </label>
-                            </div>
-                            
-                            {currentBook.showPreface !== false && (
-                                <div className="space-y-3 pt-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                                    <textarea
-                                        value={currentBook.preface || ''}
-                                        onChange={(e) => updateBookSettings({ preface: e.target.value })}
-                                        className="w-full h-24 resize-none text-xs font-medium bg-white border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-primary transition-colors leading-relaxed"
-                                        placeholder="在这里输入作品的引言、寄语或序言..."
-                                    />
-                                    
-                                    <div className="space-y-1.5">
-                                        <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">金句模板库 (一键套用)</span>
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                            {PREFACE_TEMPLATES.map((tpl) => (
-                                                <button
-                                                    key={tpl.id}
-                                                    onClick={() => {
-                                                        const compiled = compilePrefaceText(tpl.content, currentBook);
-                                                        updateBookSettings({ preface: compiled });
-                                                    }}
-                                                    className="p-2 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 rounded text-left transition-all duration-150 group"
-                                                    title={tpl.content}
-                                                >
-                                                    <div className="text-[10px] font-bold text-slate-700 group-hover:text-indigo-700">{tpl.name}</div>
-                                                    <div className="text-[8px] text-slate-400 line-clamp-1 group-hover:text-indigo-400 mt-0.5">{tpl.content.replace(/\n/g, ' ')}</div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
 
                         {/* 物理属性 */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[9px] text-gray-400 mb-1 font-bold uppercase tracking-wider">纸张尺寸</label>
-                                <select
-                                    value={currentBook.pageSize}
-                                    onChange={(e) => updateBookSettings({ pageSize: e.target.value as PageSize })}
-                                    className="w-full text-xs font-medium bg-white border border-gray-200 rounded px-2 py-1.5 outline-none"
-                                >
-                                    {Object.entries(PAGE_SIZES).map(([key, value]) => (
-                                        <option key={key} value={key}>{value.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[9px] text-gray-400 mb-1 font-bold uppercase tracking-wider">视觉主题</label>
-                                <select
-                                    value={currentBook.theme}
-                                    onChange={(e) => updateBookSettings({ theme: e.target.value })}
-                                    className="w-full text-xs font-medium bg-white border border-gray-200 rounded px-2 py-1.5 outline-none"
-                                >
-                                    <option value="classic">经典雅致 (Classic)</option>
-                                    <option value="modern">现代简约 (Modern)</option>
-                                    <option value="warm">温馨时光 (Warm)</option>
-                                    <option value="magazine">时尚杂志 (Magazine)</option>
-                                    {themes && themes.map((t) => (
-                                        <option key={t.id} value={t.id}>{t.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                        <div>
+                            <label className="block text-[9px] text-gray-400 mb-1 font-bold uppercase tracking-wider">纸张尺寸</label>
+                            <select
+                                value={currentBook.pageSize}
+                                onChange={(e) => updateBookSettings({ pageSize: e.target.value as PageSize })}
+                                className="w-full text-xs font-medium bg-white border border-gray-200 rounded px-2 py-1.5 outline-none"
+                            >
+                                {Object.entries(PAGE_SIZES).map(([key, value]) => (
+                                    <option key={key} value={key}>{value.name}</option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                 )}
@@ -318,9 +252,9 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
                             onClick={() => setIsLayoutPopoverOpen(!isLayoutPopoverOpen)}
                             className="flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 shadow-sm cursor-pointer transition-all"
                         >
-                            <span>{templates.find(t => t.id === currentPage.layout)?.name || '选择排版'}</span>
+                            <span>{templates.find(t => t.id === currentPage.templateId)?.name || '选择排版'}</span>
                             <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md font-semibold">
-                                {templates.find(t => t.id === currentPage.layout)?.photoCount || 0} 张照片
+                                {templates.find(t => t.id === currentPage.templateId)?.photoCount || 0} 张照片
                             </span>
                         </button>
 
@@ -337,12 +271,12 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
                                     <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-3">切换页面排版布局</h4>
                                     <div className="grid grid-cols-2 gap-2 max-h-[320px] overflow-y-auto pr-1">
                                         {templates.map(t => {
-                                            const isSelected = currentPage.layout === t.id;
+                                            const isSelected = currentPage.templateId === t.id;
                                             return (
                                                 <button
                                                     key={t.id}
                                                     onClick={() => {
-                                                        updatePage(chapterId, currentPage.id, { layout: t.id });
+                                                        updatePage(chapterId, currentPage.id, { templateId: t.id });
                                                         setIsLayoutPopoverOpen(false);
                                                     }}
                                                     className={`p-2 rounded-xl border flex flex-col items-center gap-2 transition-all group cursor-pointer ${
@@ -426,8 +360,8 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
                                     const layoutLimits: Record<string, number> = {
                                         single: 1, grid: 9, collage: 4, cover: 1, magazine: 4, journal: 2
                                     };
-                                    const dynamicTemplate = templates.find(t => t.id === currentPage.layout);
-                                    const maxPhotos = dynamicTemplate ? dynamicTemplate.photoCount : (layoutLimits[currentPage.layout] || 4);
+                                    const dynamicTemplate = templates.find(t => t.id === currentPage.templateId);
+                                    const maxPhotos = dynamicTemplate ? dynamicTemplate.photoCount : (layoutLimits[currentPage.templateId] || 4);
                                     const isOverflow = index >= maxPhotos;
 
                                     return (
@@ -456,8 +390,8 @@ export const ChapterEditor: React.FC<ChapterEditorProps> = ({
             {
                 (() => {
                     const layoutLimits: Record<string, number> = { single: 1, grid: 9, collage: 4, cover: 1, magazine: 4, journal: 2 };
-                    const dynamicTemplate = templates.find(t => t.id === currentPage.layout);
-                    const maxPhotos = dynamicTemplate ? dynamicTemplate.photoCount : (layoutLimits[currentPage.layout] || 4);
+                    const dynamicTemplate = templates.find(t => t.id === currentPage.templateId);
+                    const maxPhotos = dynamicTemplate ? dynamicTemplate.photoCount : (layoutLimits[currentPage.templateId] || 4);
                     const validPhotosCount = currentPage.photos.filter(p => p && p.url).length;
                     if (validPhotosCount > maxPhotos) {
                         return (

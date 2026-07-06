@@ -1,5 +1,5 @@
 import type { IBookService } from './IBookService';
-import type { Book, Photo, PaginatedResponse } from '../types';
+import type { Book, BookCover, Page, Photo, PaginatedResponse } from '../types';
 
 const STORAGE_KEY = 'timecollate_books';
 const SIMULATED_DELAY = 300; // ms
@@ -82,10 +82,103 @@ export class LocalBookService implements IBookService {
         };
     }
 
-    async getBook(id: string): Promise<Book | null> {
+    async getBook(id: string): Promise<{ book: Book; cover: BookCover | null; pages: Page[] } | null> {
         await this.delay();
         const books = this.loadFromStorage();
-        return books.find(b => b.id === id) || null;
+        const b = books.find(x => x.id === id);
+        if (!b) return null;
+
+        // 提取封面和内页，实现向下兼容
+        let cover: BookCover | null = (b as any).cover || null;
+        const legacyCoverPage = b.pages.find(p => p.templateId === 'book-cover' || p.pageType === 'cover');
+        
+        if (!cover) {
+            const coverId = legacyCoverPage?.id || crypto.randomUUID();
+            cover = {
+                id: coverId,
+                bookId: b.id,
+                frontElements: legacyCoverPage?.elements || [],
+                backElements: [],
+                version: 1
+            };
+        }
+
+        const pages = b.pages.filter(p => p.templateId !== 'book-cover' && p.pageType !== 'cover');
+
+        const book: Book = {
+            ...b,
+            coverId: cover.id,
+            pages: [] // pages 独立返回
+        };
+
+        return { book, cover, pages };
+    }
+
+    async saveCover(bookId: string, cover: Partial<BookCover>): Promise<BookCover> {
+        await this.delay();
+        const books = this.loadFromStorage();
+        const book = books.find(b => b.id === bookId);
+        if (book) {
+            const currentCover = (book as any).cover || {
+                id: crypto.randomUUID(),
+                bookId,
+                frontElements: [],
+                backElements: [],
+                version: 1
+            };
+            const updatedCover = { ...currentCover, ...cover, version: currentCover.version + 1 };
+            (book as any).cover = updatedCover;
+            this.saveToStorage(books);
+            return updatedCover;
+        }
+        throw new Error('Book not found');
+    }
+
+    async savePage(pageId: string, page: Partial<Page>): Promise<Page> {
+        await this.delay();
+        const books = this.loadFromStorage();
+        for (const book of books) {
+            const pageIndex = book.pages.findIndex(p => p.id === pageId);
+            if (pageIndex >= 0) {
+                book.pages[pageIndex] = { ...book.pages[pageIndex], ...page };
+                this.saveToStorage(books);
+                return book.pages[pageIndex];
+            }
+        }
+        throw new Error('Page not found');
+    }
+
+    async addPage(bookId: string, page: Partial<Page>): Promise<{ id: string }> {
+        await this.delay();
+        const books = this.loadFromStorage();
+        const book = books.find(b => b.id === bookId);
+        if (book) {
+            const id = page.id || crypto.randomUUID();
+            const newPage: Page = {
+                id,
+                content: '',
+                photos: [],
+                templateId: 'custom',
+                ...page
+            };
+            book.pages.push(newPage);
+            this.saveToStorage(books);
+            return { id };
+        }
+        throw new Error('Book not found');
+    }
+
+    async deletePage(pageId: string): Promise<void> {
+        await this.delay();
+        const books = this.loadFromStorage();
+        for (const book of books) {
+            const pageIndex = book.pages.findIndex(p => p.id === pageId);
+            if (pageIndex >= 0) {
+                book.pages.splice(pageIndex, 1);
+                this.saveToStorage(books);
+                return;
+            }
+        }
     }
 
     async saveBook(book: Book): Promise<Book> {
@@ -95,7 +188,8 @@ export class LocalBookService implements IBookService {
         const index = books.findIndex(b => b.id === book.id);
 
         if (index >= 0) {
-            books[index] = book;
+            // 只更新基本属性，保留已有的 pages / cover
+            books[index] = { ...books[index], ...book, pages: books[index].pages, cover: (books[index] as any).cover } as any;
         } else {
             books.push(book);
         }
@@ -216,5 +310,55 @@ export class LocalBookService implements IBookService {
     async applyTemplate(_templateId: string, _title: string): Promise<string> {
         await this.delay();
         return 'mock-book-id';
+    }
+
+    async updateThumbnail(id: string, coverUrl: string, coverOssKey: string): Promise<void> {
+        await this.delay();
+        const books = this.loadFromStorage();
+        const bookIndex = books.findIndex(b => b.id === id);
+        if (bookIndex !== -1) {
+            books[bookIndex].coverUrl = coverUrl;
+            books[bookIndex].coverOssKey = coverOssKey;
+            books[bookIndex].updatedAt = Date.now();
+            this.saveToStorage(books);
+        }
+    }
+
+    async publishPageTemplate(): Promise<any> {
+        await this.delay();
+        return {};
+    }
+
+    async usePageTemplate(): Promise<void> {
+        await this.delay();
+    }
+
+    async getTemplateCollections(): Promise<any[]> {
+        await this.delay();
+        return [];
+    }
+
+    async getMarketTemplateCollections(): Promise<any[]> {
+        await this.delay();
+        return [];
+    }
+
+    async getTemplateCollection(): Promise<any> {
+        await this.delay();
+        return null;
+    }
+
+    async saveTemplateCollection(): Promise<any> {
+        await this.delay();
+        return {};
+    }
+
+    async deleteTemplateCollection(): Promise<void> {
+        await this.delay();
+    }
+
+    async applyTemplateCollection(): Promise<string[]> {
+        await this.delay();
+        return [];
     }
 }

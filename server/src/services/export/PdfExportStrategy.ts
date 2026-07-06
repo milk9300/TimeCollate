@@ -74,7 +74,7 @@ export class PdfExportStrategy implements IExportStrategy {
                     await page.goto(frontendBaseUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
                     await page.evaluate(({ token, user }) => {
                         window.localStorage.setItem('timecollate-auth', JSON.stringify({
-                            state: { user, token, isAuthenticated: true },
+                            state: { user, token, refreshToken: '', isAuthenticated: true },
                             version: 0
                         }));
                     }, { token: options.token, user: options.user });

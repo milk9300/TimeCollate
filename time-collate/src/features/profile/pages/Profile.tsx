@@ -25,6 +25,7 @@ import {
     ChevronLeft,
     Eye
 } from 'lucide-react';
+import { GeneratedCover } from '../../editor/components/GeneratedCover';
 
 const bookService = getBookService();
 
@@ -525,13 +526,12 @@ export const Profile: React.FC = () => {
                                                         onClick={() => navigate(`/read/${book.id}`)}
                                                         className="w-20 h-28 rounded-xl bg-slate-100 border border-slate-200/50 shadow-sm overflow-hidden flex-shrink-0 cursor-pointer relative group-hover:scale-103 transition-transform"
                                                     >
-                                                        {book.coverUrl ? (
-                                                            <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-slate-350 text-[10px] font-black uppercase bg-gradient-to-br from-indigo-50 to-purple-50">
-                                                                No Cover
-                                                            </div>
-                                                        )}
+                                                        <GeneratedCover
+                                                            title={book.title}
+                                                            author={book.author || ''}
+                                                            coverUrl={book.coverUrl || undefined}
+                                                            mode="card"
+                                                        />
                                                     </div>
 
                                                     <div className="flex-1 min-w-0 flex flex-col justify-between">
@@ -543,9 +543,6 @@ export const Profile: React.FC = () => {
                                                                 {book.title}
                                                             </h4>
                                                             <p className="text-[10px] text-slate-400 font-bold mt-1">作者: {book.author || '匿名'}</p>
-                                                            <span className="inline-block mt-2 px-2 py-0.5 bg-slate-50 border border-slate-100 rounded text-[9px] font-black text-slate-500 uppercase tracking-wider">
-                                                                {book.theme}
-                                                            </span>
                                                         </div>
 
                                                         {/* 数据统计指标 */}

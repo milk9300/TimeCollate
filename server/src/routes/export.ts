@@ -123,7 +123,8 @@ router.post('/:bookId', async (req, res) => {
         }
 
         // 零信任校验：确认书籍所有权与标题
-        const book = await bookService.getBook(bookId, req.userId);
+        const bookDetails = await bookService.getBook(bookId, req.userId);
+        const book = bookDetails?.book;
         if (!book) {
             res.status(404).json({ success: false, error: 'Book not found' });
             return;

@@ -17,6 +17,7 @@ interface CanvasPhotoFrameElementProps {
     pageId: string;
     readOnly?: boolean;
     onUpdate: (updates: Partial<PhotoFrameElement>) => void;
+    onDragEnd?: () => void;
     canvasRef: React.RefObject<HTMLDivElement | null>;
     siblingElements: CanvasElement[];
 }
@@ -39,6 +40,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
     pageId,
     readOnly = false,
     onUpdate,
+    onDragEnd,
     canvasRef,
     siblingElements
 }) => {
@@ -46,6 +48,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
     const activePhotoEdit = useBookStore(state => state.activePhotoEdit);
     const setActivePhotoEdit = useBookStore(state => state.setActivePhotoEdit);
     const assetCache = useAssetStore(state => state.assetCache);
+    const activeInspectorSection = useBookStore(state => state.activeInspectorSection);
 
     const [isDragOver, setIsDragOver] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -58,14 +61,18 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cropContainerRef = useRef<HTMLDivElement>(null);
+    const cropStateRef = useRef({ scale: 1.0, x: 50, y: 50 });
 
+    const photo = element.photo;
     const isSelected = activePhotoEdit?.photoId === element.id && activePhotoEdit?.pageId === pageId;
+    const isCurrentlyCropping = isCropping || (isSelected && activeInspectorSection === 'crop');
 
     const { handleMouseDown } = useCanvasElementTransform(
         element,
         canvasRef,
         siblingElements,
-        onUpdate as any
+        onUpdate as any,
+        onDragEnd
     );
 
     useEffect(() => {
@@ -76,26 +83,59 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
         }
     }, [element.photo]);
 
+    useEffect(() => {
+        cropStateRef.current = { scale: cropScale, x: cropX, y: cropY };
+    }, [cropScale, cropX, cropY]);
+
+    useEffect(() => {
+        if (!isSelected && isCropping) {
+            setIsCropping(false);
+            const latest = cropStateRef.current;
+            if (element.photo) {
+                onUpdate({
+                    photo: {
+                        ...element.photo,
+                        scale: latest.scale,
+                        xOffset: latest.x,
+                        yOffset: latest.y
+                    }
+                });
+            }
+        }
+    }, [isSelected, isCropping, onUpdate, element.photo]);
+
     const handleClick = (e: React.MouseEvent) => {
         if (readOnly || editorMode === 'hand') return;
         e.stopPropagation();
 
-        if (element.photo) {
-            setActivePhotoEdit({
-                chapterId,
-                pageId,
-                photoId: element.id
-            });
-        } else {
-            // 空插槽直接拉起文件上传
+        const alreadySelected = isSelected;
+
+        setActivePhotoEdit({
+            chapterId,
+            pageId,
+            photoId: element.id
+        });
+
+        // 如果是空插槽，且已经是选中状态，再次点击可以拉起上传
+        if ((!photo || !photo.url) && alreadySelected) {
             fileInputRef.current?.click();
         }
     };
 
     const handleDoubleClick = (e: React.MouseEvent) => {
-        if (readOnly || !element.photo || editorMode === 'hand') return;
+        if (readOnly || editorMode === 'hand') return;
         e.stopPropagation();
-        setIsCropping(true);
+
+        if (photo && photo.url) {
+            if (isCropping) {
+                handleSaveCrop();
+            } else {
+                setIsCropping(true);
+            }
+        } else {
+            // 空插槽双击拉起文件上传
+            fileInputRef.current?.click();
+        }
     };
 
     // 文件上传替换
@@ -255,7 +295,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
         }
     };
 
-    // 内联拖拽裁剪计算
+    // 内联拖拽裁剪计算（全新改版：引入高精度防拉伸防抖 object-cover 平移映射算法）
     const handleCropMouseDown = (e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
@@ -269,17 +309,44 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
         const initialX = cropX;
         const initialY = cropY;
 
+        // 在鼠标按下时，实时获取渲染预览图的物理分辨率，以完美防范历史旧数据中可能缺失 width / height 属性的缺陷
+        const imgEl = container.querySelector('img');
+        const imgNaturalW = imgEl?.naturalWidth || photo?.width || rect.width;
+        const imgNaturalH = imgEl?.naturalHeight || photo?.height || rect.height;
+
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const dx = moveEvent.clientX - startX;
             const dy = moveEvent.clientY - startY;
 
-            // 根据缩放比与图片框尺寸，计算百分比位移
-            const pctDx = (dx / rect.width) * 100 / Math.max(1, cropScale - 1);
-            const pctDy = (dy / rect.height) * 100 / Math.max(1, cropScale - 1);
+            const containerW = rect.width;
+            const containerH = rect.height;
 
-            // 平移限制在 0 - 100% 之间
-            const nextX = Math.max(0, Math.min(100, initialX - pctDx));
-            const nextY = Math.max(0, Math.min(100, initialY - pctDy));
+            // 1. 模拟 object-cover 的排版填充比例因子
+            const scaleFactor = Math.max(containerW / imgNaturalW, containerH / imgNaturalH);
+            const baseImgW = imgNaturalW * scaleFactor;
+            const baseImgH = imgNaturalH * scaleFactor;
+
+            // 2. 累加用户裁剪缩放级别后的渲染尺寸
+            const renderedW = baseImgW * cropScale;
+            const renderedH = baseImgH * cropScale;
+
+            // 3. 计算图片在视口内多余溢出的平移区间
+            const overflowX = renderedW - containerW;
+            const overflowY = renderedH - containerH;
+
+            // 4. 将物理鼠标偏移转换为 object-position 的偏移百分比
+            // 鼠标 dx 为正代表往右拉，则背景图片的焦点位置应该往左移（即 objectPosition 应该减小百分比）
+            let nextX = initialX;
+            if (overflowX > 0) {
+                const pctDx = (dx / overflowX) * 100;
+                nextX = Math.max(0, Math.min(100, initialX - pctDx));
+            }
+
+            let nextY = initialY;
+            if (overflowY > 0) {
+                const pctDy = (dy / overflowY) * 100;
+                nextY = Math.max(0, Math.min(100, initialY - pctDy));
+            }
 
             setCropX(nextX);
             setCropY(nextY);
@@ -288,6 +355,18 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
         const handleMouseUp = () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+
+            const latest = cropStateRef.current;
+            if (element.photo) {
+                onUpdate({
+                    photo: {
+                        ...element.photo,
+                        scale: latest.scale,
+                        xOffset: latest.x,
+                        yOffset: latest.y
+                    }
+                });
+            }
         };
 
         window.addEventListener('mousemove', handleMouseMove);
@@ -309,8 +388,6 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
         }
     };
 
-    const photo = element.photo;
-
     const currentBook = useBookStore(state => state.currentBook);
     const pageSize = currentBook?.pageSize || 'A4';
     const { virtualWidth, virtualHeight } = getVirtualDimensions(pageSize);
@@ -323,27 +400,32 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
         width: `${(element.width / virtualWidth) * 100}%`,
         height: `${(element.height / virtualHeight) * 100}%`,
         transform: `rotate(${element.rotate || 0}deg)`,
-        zIndex: element.zIndex || 10,
+        zIndex: isSelected ? 9999 : (element.zIndex || 10),
     };
 
     const borderStyle = photo?.styleType || 'normal';
     const filterType = photo?.filterType || 'none';
     const filterCSS = filterStyles[filterType] || 'none';
 
-    const renderImage = () => (
-        <img
-            src={getThumbnailUrl(photo?.url || '', 800)}
-            alt={photo?.caption || '图片'}
-            className="w-full h-full object-cover pointer-events-none select-none"
-            style={{
-                transform: `scale(${photo?.scale ?? 1.0})`,
-                objectPosition: `${photo?.xOffset ?? 50}% ${photo?.yOffset ?? 50}%`,
-                transformOrigin: 'center center',
-                filter: `var(--photo-filter, none) ${filterCSS !== 'none' ? filterCSS : ''}`,
-                transition: 'transform 0.1s ease-out, object-position 0.1s ease-out, filter 0.2s ease-in-out'
-            }}
-        />
-    );
+    const renderImage = () => {
+        const rawUrl = getThumbnailUrl(photo?.url || '', 800);
+        const imageUrl = rawUrl ? `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}cors=1` : '';
+        return (
+            <img
+                src={imageUrl}
+                alt={photo?.caption || '图片'}
+                className="w-full h-full object-cover pointer-events-none select-none"
+                crossOrigin="anonymous"
+                style={{
+                    transform: `scale(${photo?.scale ?? 1.0})`,
+                    objectPosition: `${photo?.xOffset ?? 50}% ${photo?.yOffset ?? 50}%`,
+                    transformOrigin: 'center center',
+                    filter: `var(--photo-filter, none) ${filterCSS !== 'none' ? filterCSS : ''}`,
+                    transition: 'transform 0.1s ease-out, object-position 0.1s ease-out, filter 0.2s ease-in-out'
+                }}
+            />
+        );
+    };
 
     const renderStyledFrame = () => {
         // 未从云端获取或未填充图片时的空插槽样式
@@ -359,9 +441,20 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                     {isUploading ? (
                         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
                     ) : (
-                        <div className="flex flex-col items-center gap-1 text-gray-400 group-hover/canvas-photo:text-indigo-600 transition-colors">
+                        <div 
+                            className="upload-trigger flex flex-col items-center gap-1 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer p-3 hover:scale-105 active:scale-95 duration-100 z-10"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setActivePhotoEdit({
+                                    chapterId,
+                                    pageId,
+                                    photoId: element.id
+                                });
+                                fileInputRef.current?.click();
+                            }}
+                        >
                             <Plus size={18} className="stroke-[2.5]" />
-                            <span className="text-[9px] font-bold tracking-wider uppercase">
+                            <span className="text-[9px] font-bold tracking-wider uppercase select-none">
                                 {isDragOver ? '松开填充' : '添加图片'}
                             </span>
                         </div>
@@ -448,17 +541,23 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
             onMouseDown={(e) => {
-                if (editorMode === 'select' && !isCropping) {
+                if (editorMode === 'select' && !isCurrentlyCropping) {
+                    e.stopPropagation();
+                    setActivePhotoEdit({
+                        chapterId,
+                        pageId,
+                        photoId: element.id
+                    });
                     handleMouseDown(e, 'move');
                 }
             }}
-            draggable={editorMode === 'select' && !isCropping && !!photo?.url}
+            draggable={editorMode === 'select' && !isCurrentlyCropping && !!photo?.url}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             className={`group/canvas-photo relative transition-all ${
-                editorMode === 'select' ? 'cursor-pointer hover:outline hover:outline-2 hover:outline-[#8b3dff]/40' : ''
+                editorMode === 'select' ? `cursor-pointer ${!isSelected ? 'hover:outline hover:outline-2 hover:outline-indigo-300' : ''}` : ''
             } ${isDragOver ? 'scale-[0.98] opacity-80' : ''}`}
             data-element-id={element.id}
             data-element-type="photo"
@@ -466,7 +565,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
             {renderStyledFrame()}
 
             {/* Canva 风格选中边框 */}
-            {isSelected && !isDragOver && !isCropping && (
+            {isSelected && !isDragOver && !isCurrentlyCropping && (
                 <CanvaSelectionFrame
                     showCornerHandles={true}
                     showEdgeHandles="all"
@@ -477,59 +576,30 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
             )}
 
             {/* 内联裁剪微调蒙板层 */}
-            {isCropping && (
+            {isCurrentlyCropping && (
                 <div
                     ref={cropContainerRef}
                     onMouseDown={handleCropMouseDown}
-                    className="absolute inset-0 z-40 bg-black/40 cursor-move overflow-hidden flex flex-col justify-between"
+                    className="absolute inset-0 z-40 cursor-move overflow-hidden flex flex-col justify-between"
                 >
-                    {/* 裁剪区指示 */}
-                    <div className="absolute inset-[10%] border-2 border-dashed border-white pointer-events-none z-10 flex items-center justify-center">
-                        <span className="text-[10px] text-white bg-black/50 px-2 py-0.5 rounded shadow">
-                            双击或拖拽平移裁剪
+                    {/* 裁剪区指示 (采用 9999px 黑色半透明阴影实现完美的中心挖孔高亮) */}
+                    <div className="absolute inset-[10%] border-2 border-dashed border-white pointer-events-none z-10 flex items-center justify-center shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]">
+                        <span className="text-[9px] font-bold text-white bg-black/60 px-2.5 py-0.5 rounded-full shadow border border-white/10 select-none">
+                            拖拽平移图片 / 拖动滑块缩放
                         </span>
                     </div>
 
-                    {/* 渲染裁剪中真实拉伸大小的背景图 */}
+                    {/* 渲染裁剪预览（采用 object-cover 和 scale / object-position 配合，杜绝拉伸变形） */}
                     <img
                         src={photo?.url || ''}
                         alt="裁剪预览"
-                        className="absolute max-w-none pointer-events-none select-none opacity-90"
+                        className="w-full h-full object-cover pointer-events-none select-none"
                         style={{
-                            width: `${100 * cropScale}%`,
-                            height: `${100 * cropScale}%`,
-                            left: `${-((cropScale - 1) * cropX)}%`,
-                            top: `${-((cropScale - 1) * cropY)}%`,
+                            transform: `scale(${cropScale})`,
+                            objectPosition: `${cropX}% ${cropY}%`,
+                            transformOrigin: 'center center',
                         }}
                     />
-
-                    {/* 底部滑块控制器 */}
-                    <div
-                        className="absolute bottom-2 inset-x-2 bg-black/75 rounded px-3 py-2 flex items-center gap-3 z-50 shadow-lg text-white"
-                        onMouseDown={e => e.stopPropagation()} // 防止触发拖拽
-                    >
-                        <Crop size={14} className="opacity-80" />
-                        <input
-                            type="range"
-                            min="1.0"
-                            max="3.0"
-                            step="0.05"
-                            value={cropScale}
-                            onChange={e => {
-                                setCropScale(parseFloat(e.target.value));
-                            }}
-                            className="flex-1 accent-purple-500 h-1 rounded bg-white/20 appearance-none outline-none"
-                        />
-                        <span className="text-[10px] font-mono min-w-[30px] text-right">
-                            {cropScale.toFixed(2)}x
-                        </span>
-                        <button
-                            onClick={handleSaveCrop}
-                            className="bg-purple-600 hover:bg-purple-500 active:bg-purple-700 p-1.5 rounded-full text-white transition-colors"
-                        >
-                            <Check size={12} className="stroke-[3]" />
-                        </button>
-                    </div>
                 </div>
             )}
 

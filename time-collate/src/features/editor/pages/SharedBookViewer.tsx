@@ -65,7 +65,7 @@ export const SharedBookViewer: React.FC = () => {
     // 成功加载：渲染 3D 翻页书
     // 在分享模式下，onClose 返回主页界面
     return (
-        <ThemeProvider theme={book.theme}>
+        <ThemeProvider theme="classic">
             <FlipBook
                 book={book}
                 onClose={() => navigate('/')}

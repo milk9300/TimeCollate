@@ -11,6 +11,7 @@ interface CanvasShapeElementProps {
     pageId: string;
     readOnly?: boolean;
     onUpdate: (updates: Partial<ShapeElement>) => void;
+    onDragEnd?: () => void;
     canvasRef: React.RefObject<HTMLDivElement | null>;
     siblingElements: CanvasElement[];
 }
@@ -25,6 +26,7 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
     pageId,
     readOnly = false,
     onUpdate,
+    onDragEnd,
     canvasRef,
     siblingElements
 }) => {
@@ -39,7 +41,8 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
         element,
         canvasRef,
         siblingElements,
-        onUpdate as any
+        onUpdate as any,
+        onDragEnd
     );
 
     const handleClick = (e: React.MouseEvent) => {
@@ -64,7 +67,7 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
         width: `${(element.width / virtualWidth) * 100}%`,
         height: `${(element.height / virtualHeight) * 100}%`,
         transform: `rotate(${element.rotate || 0}deg)`,
-        zIndex: element.zIndex || 10,
+        zIndex: isSelected ? 9999 : (element.zIndex || 10),
         pointerEvents: readOnly ? 'none' : 'auto',
     };
 
@@ -127,6 +130,12 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
             onClick={handleClick}
             onMouseDown={(e) => {
                 if (editorMode === 'select') {
+                    e.stopPropagation();
+                    setActiveStickerEdit({
+                        chapterId,
+                        pageId,
+                        stickerId: element.id
+                    });
                     handleMouseDown(e, 'move');
                 }
             }}

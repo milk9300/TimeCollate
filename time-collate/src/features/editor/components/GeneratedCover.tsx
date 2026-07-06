@@ -128,7 +128,7 @@ export function parseCoverUrl(coverUrl: string | undefined, title: string): Cove
             textColor: COVER_PRESET_BACKGROUNDS[0].textColor,
             accentColor: COVER_PRESET_BACKGROUNDS[0].accentColor,
             subColor: COVER_PRESET_BACKGROUNDS[0].subColor,
-            image: coverUrl,
+            image: coverUrl ? `${coverUrl}${coverUrl.includes('?') ? '&' : '?'}cors=1` : undefined,
             ossKey: ''
         };
     }
@@ -138,7 +138,8 @@ export function parseCoverUrl(coverUrl: string | undefined, title: string): Cove
         const params = new URLSearchParams(queryStr);
         const layout = (params.get('layout') || 'classic') as any;
         const bgId = params.get('bg') || 'cotton-white';
-        const image = params.get('image') ? decodeURIComponent(params.get('image')!) : undefined;
+        const rawImage = params.get('image') ? decodeURIComponent(params.get('image')!) : undefined;
+        const image = rawImage ? `${rawImage}${rawImage.includes('?') ? '&' : '?'}cors=1` : undefined;
         const ossKey = params.get('ossKey') ? decodeURIComponent(params.get('ossKey')!) : undefined;
 
         const bgConfig = COVER_PRESET_BACKGROUNDS.find(b => b.id === bgId) || COVER_PRESET_BACKGROUNDS[0];
@@ -226,7 +227,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                                 <div className="absolute inset-0 p-1 bg-white/90 backdrop-blur-[1px] shadow-md border border-black/5">
                                     <div className="w-full h-full p-1 bg-neutral-50 shadow-[inset_0_2px_5px_rgba(0,0,0,0.08)] border border-black/5">
                                         <div className="w-full h-full relative overflow-hidden">
-                                            <img src={config.image} className="w-full h-full object-cover" alt="封面配图" />
+                                            <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="封面配图" />
                                         </div>
                                     </div>
                                 </div>
@@ -278,7 +279,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                             <div className="absolute inset-0 p-[4mm] bg-white shadow-2xl border border-black/5">
                                 <div className="w-full h-full p-[3mm] bg-neutral-50 shadow-[inset_0_4px_10px_rgba(0,0,0,0.1)] border border-black/5">
                                     <div className="w-full h-full relative overflow-hidden">
-                                        <img src={config.image} className="w-full h-full object-cover grayscale-[0.05]" alt="封面" />
+                                        <img src={config.image} className="w-full h-full object-cover grayscale-[0.05]" crossOrigin="anonymous" alt="封面" />
                                     </div>
                                 </div>
                             </div>
@@ -328,7 +329,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                         <>
                             <div className="relative w-[52%] aspect-[4/5] ml-2 shrink-0 my-2">
                                 <div className="absolute inset-0 rounded-sm overflow-hidden shadow-md border border-black/5">
-                                    <img src={config.image} className="w-full h-full object-cover" alt="封面" />
+                                    <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="封面" />
                                 </div>
                             </div>
                             <div className="pl-2 pr-4 flex flex-col items-start text-left mt-1">
@@ -368,7 +369,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                     <>
                         <div className="relative w-[48%] aspect-[4/5] ml-[6mm] shrink-0 my-[6mm]">
                             <div className="absolute inset-0 rounded-[2mm] overflow-hidden shadow-xl border border-black/5">
-                                <img src={config.image} className="w-full h-full object-cover" alt="插图" />
+                                <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="插图" />
                             </div>
                         </div>
                         <div className="pl-[6mm] pr-[12mm] space-y-4">
@@ -431,7 +432,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                         // 有图：右下偏心层叠重影框
                         <div className="relative w-[65%] aspect-[4/3] shrink-0 self-end mr-1 z-20 transform translate-y-1 my-2">
                             <div className="absolute inset-0 rounded-sm overflow-hidden border border-black/10 shadow-lg">
-                                <img src={config.image} className="w-full h-full object-cover" alt="插画" />
+                                <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="插画" />
                             </div>
                         </div>
                     ) : (
@@ -472,7 +473,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                     // 有图：巨型下沉阴影叠盖
                     <div className="relative w-[66%] aspect-[4/3] shrink-0 my-6 self-end mr-2 z-20 transform translate-x-2">
                         <div className="absolute inset-0 rounded-[4mm] overflow-hidden border border-black/10 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)]">
-                            <img src={config.image} className="w-full h-full object-cover" alt="大封面" />
+                            <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="大封面" />
                         </div>
                     </div>
                 ) : (
@@ -520,7 +521,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                         // 有图：正圆框与背景几何发生相交叠加
                         <div className="relative w-[45%] aspect-square shrink-0 z-10 mt-3 mb-2">
                             <div className="absolute inset-0 rounded-full overflow-hidden border-2 border-white shadow-md">
-                                <img src={config.image} className="w-full h-full object-cover" alt="圆形插图" />
+                                <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="圆形插图" />
                             </div>
                         </div>
                     ) : (
@@ -563,7 +564,7 @@ export const GeneratedCover: React.FC<GeneratedCoverProps> = ({
                     // 有图：圆角流体艺术框
                     <div className="relative w-[50%] aspect-square shrink-0 mb-8 z-10 mt-[5mm]">
                         <div className="absolute inset-0 rounded-full overflow-hidden border-4 border-white shadow-2xl">
-                            <img src={config.image} className="w-full h-full object-cover" alt="圆形艺术照" />
+                            <img src={config.image} className="w-full h-full object-cover" crossOrigin="anonymous" alt="圆形艺术照" />
                         </div>
                     </div>
                 ) : (

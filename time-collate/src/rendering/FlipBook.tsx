@@ -10,6 +10,22 @@ import { getVirtualChapters } from '../store';
 import { useAuthStore } from '../store/useAuthStore';
 import { socialService, type Comment } from '../services/socialService';
 
+// #region Helper to extract physical image URL from coverUrl design protocol
+function getRealCoverImageUrl(coverUrl: string | undefined): string | undefined {
+    if (!coverUrl) return undefined;
+    if (!coverUrl.startsWith('design://')) return coverUrl;
+    try {
+        const queryStr = coverUrl.split('?')[1] || '';
+        const params = new URLSearchParams(queryStr);
+        const image = params.get('image') ? decodeURIComponent(params.get('image')!) : undefined;
+        return image || undefined;
+    } catch (e) {
+        console.error('Failed to parse coverUrl design protocol', e);
+        return undefined;
+    }
+}
+// #endregion
+
 // #region 类型定义
 interface FlipBookProps {
     book: Book;
@@ -96,9 +112,9 @@ const PageComponent = forwardRef<HTMLDivElement, PageComponentProps>(
                 ) : (
                     // 动态虚拟化占位骨架屏
                     <div className="absolute inset-0 flex items-center justify-center bg-[#FAF9F6]">
-                        {pageData.page.layout === 'book-cover' && book.coverUrl ? (
+                        {pageData.page.templateId === 'book-cover' && getRealCoverImageUrl(book.coverUrl) ? (
                             <img 
-                                src={book.coverUrl} 
+                                src={getRealCoverImageUrl(book.coverUrl)} 
                                 alt="cover-preload" 
                                 className="w-full h-full object-cover opacity-50 blur-[2px]" 
                             />
@@ -116,7 +132,7 @@ const PageComponent = forwardRef<HTMLDivElement, PageComponentProps>(
                 )}
 
                 {/* 页码 - 非封面/序言/封底/空白页才显示 */}
-                {!['book-cover', 'preface', 'back-cover', 'empty'].includes(pageData.page.layout) && (
+                {!['book-cover', 'back-cover', 'empty'].includes(pageData.page.templateId) && (
                     <div className="absolute bottom-4 left-0 right-0 text-center z-20">
                         <span className="text-[8pt] text-gray-350 tracking-widest font-mono">
                             {pageNumber} / {totalPages}
@@ -292,23 +308,18 @@ export const FlipBook: React.FC<FlipBookProps> = ({ book, onClose, isPublicView,
         const pages: FlattenedPage[] = [];
 
         // 1. 封面页 (Right) - 第 0 页
+        const coverPage = book.pages?.find(p => p.pageType === 'cover');
         pages.push({
-            page: { id: 'virtual-cover', content: '', photos: [], layout: 'book-cover' },
-            chapterTitle: book.title, chapterDate: '', chapterIndex: -1
+            page: coverPage || { id: 'virtual-cover', content: '', photos: [], templateId: 'book-cover', pageType: 'cover' },
+            chapterTitle: '封面', chapterDate: '', chapterIndex: -1
         });
 
-        // 2. 封二 (Left) - 空白页
+        // 2. 放置环衬页 (内前封，左页为白页)
         pages.push({
-            page: { id: 'virtual-inside-front-cover', content: '', photos: [], layout: 'empty' },
+            page: { id: 'virtual-inside-front-cover', content: '', photos: [], templateId: 'empty' },
             chapterTitle: '', chapterDate: '', chapterIndex: -1
         });
 
-        if (book.showPreface !== false) {
-            pages.push({
-                page: { id: 'virtual-preface', content: book.preface || '', photos: [], layout: 'preface' },
-                chapterTitle: '引言', chapterDate: '', chapterIndex: -1
-            });
-        }
 
         // 3. 章节主体
         const chapters = getVirtualChapters(book.pages || []);
@@ -325,20 +336,20 @@ export const FlipBook: React.FC<FlipBookProps> = ({ book, onClose, isPublicView,
 
         // 4. 计算补白
         pages.push({
-            page: { id: 'virtual-inside-back-cover', content: '', photos: [], layout: 'empty' },
+            page: { id: 'virtual-inside-back-cover', content: '', photos: [], templateId: 'empty' },
             chapterTitle: '', chapterDate: '', chapterIndex: -1
         });
 
         if (pages.length % 2 === 0) {
             pages.push({
-                page: { id: `virtual-filler-${pages.length}`, content: '', photos: [], layout: 'empty' },
+                page: { id: `virtual-filler-${pages.length}`, content: '', photos: [], templateId: 'empty' },
                 chapterTitle: '', chapterDate: '', chapterIndex: -1
             });
         }
 
         // 5. 放置封底
         pages.push({
-            page: { id: 'virtual-back-cover', content: '', photos: [], layout: 'back-cover' },
+            page: { id: 'virtual-back-cover', content: '', photos: [], templateId: 'back-cover' },
             chapterTitle: '封底', chapterDate: '', chapterIndex: -1
         });
 
@@ -346,12 +357,12 @@ export const FlipBook: React.FC<FlipBookProps> = ({ book, onClose, isPublicView,
     }, [book]);
 
     const firstContentIndex = flattenedPages.findIndex(p =>
-        !['book-cover', 'empty', 'preface', 'back-cover'].includes(p.page.layout));
+        !['book-cover', 'empty', 'back-cover'].includes(p.page.templateId));
 
     const startOffset = firstContentIndex === -1 ? 99999 : firstContentIndex;
 
     const totalRealPages = flattenedPages.filter(p =>
-        !['book-cover', 'empty', 'preface', 'back-cover'].includes(p.page.layout)).length;
+        !['book-cover', 'empty', 'back-cover'].includes(p.page.templateId)).length;
 
     const dimensions = PAGE_SIZES[book.pageSize] || PAGE_SIZES.A4;
 
@@ -495,17 +506,17 @@ export const FlipBook: React.FC<FlipBookProps> = ({ book, onClose, isPublicView,
     }, [isGuestbookOpen]);
 
     return (
-        <ThemeProvider theme={book.theme || 'classic'}>
+        <ThemeProvider theme="classic">
             <div
                 ref={containerRef}
                 className="fixed inset-0 z-50 bg-gradient-to-br from-[#FAF9F6] via-[#F3F2EE] to-[#E5E4DF] flex flex-col overflow-hidden select-none"
             >
                 {/* 沉浸式高斯模糊背景层 */}
-                {book.coverUrl && (
+                {getRealCoverImageUrl(book.coverUrl) && (
                     <div 
                         className="absolute inset-0 z-0 opacity-[0.25] filter blur-3xl scale-125 pointer-events-none select-none transition-all duration-1000"
                         style={{
-                            backgroundImage: `url(${book.coverUrl})`,
+                            backgroundImage: `url(${getRealCoverImageUrl(book.coverUrl)})`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
                         }}

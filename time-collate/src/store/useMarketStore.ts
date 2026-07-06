@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import axios from 'axios';
-import type { Template, BookTheme, Book, PaginatedResponse } from '../types';
+import type { Template, Book, PaginatedResponse } from '../types';
 import { useBookStore } from './index';
 import { getBookService } from '../services/serviceFactory';
 
@@ -8,16 +8,15 @@ const bookService = getBookService();
 
 interface MarketState {
     marketTemplates: Template[];
-    marketThemes: BookTheme[];
     marketBookTemplates: Book[];
+    marketCollections: any[]; // 模板合集市场列表
     isLoading: boolean;
     error: string | null;
     fetchMarketAssets: () => Promise<void>;
     fetchMarketBookTemplates: (page?: number, pageSize?: number, category?: string) => Promise<PaginatedResponse<Book>>;
+    fetchMarketCollections: () => Promise<void>;
     collectTemplate: (id: string) => Promise<void>;
     uncollectTemplate: (id: string) => Promise<void>;
-    collectTheme: (id: string) => Promise<void>;
-    uncollectTheme: (id: string) => Promise<void>;
 }
 
 /**
@@ -25,22 +24,18 @@ interface MarketState {
  */
 export const useMarketStore = create<MarketState>((set) => ({
     marketTemplates: [],
-    marketThemes: [],
     marketBookTemplates: [],
+    marketCollections: [],
     isLoading: false,
     error: null,
 
     fetchMarketAssets: async () => {
         set({ isLoading: true, error: null });
         try {
-            const [templatesRes, themesRes] = await Promise.all([
-                axios.get('/templates/market'),
-                axios.get('/themes/market')
-            ]);
+            const templatesRes = await axios.get('/templates/market');
             
             set({
                 marketTemplates: templatesRes.data?.success ? templatesRes.data.data : [],
-                marketThemes: themesRes.data?.success ? themesRes.data.data : [],
                 isLoading: false
             });
         } catch (e) {
@@ -62,6 +57,17 @@ export const useMarketStore = create<MarketState>((set) => ({
             console.error('Failed to fetch market book templates:', e);
             set({ isLoading: false, error: '加载书模板市场失败' });
             throw e;
+        }
+    },
+
+    fetchMarketCollections: async () => {
+        set({ isLoading: true, error: null });
+        try {
+            const collections = await bookService.getMarketTemplateCollections();
+            set({ marketCollections: collections, isLoading: false });
+        } catch (e) {
+            console.error('Failed to fetch market collections:', e);
+            set({ isLoading: false, error: '加载市场合集失败' });
         }
     },
 
@@ -87,32 +93,6 @@ export const useMarketStore = create<MarketState>((set) => ({
             }
         } catch (e) {
             console.error('Failed to uncollect template:', e);
-            throw e;
-        }
-    },
-
-    collectTheme: async (id: string) => {
-        try {
-            const response = await axios.post(`/themes/${id}/collect`);
-            if (response.data && response.data.success) {
-                // 成功后，同步刷新编辑器的可用主题缓存
-                await useBookStore.getState().loadThemes();
-            }
-        } catch (e) {
-            console.error('Failed to collect theme:', e);
-            throw e;
-        }
-    },
-
-    uncollectTheme: async (id: string) => {
-        try {
-            const response = await axios.delete(`/themes/${id}/collect`);
-            if (response.data && response.data.success) {
-                // 成功后，同步刷新编辑器的可用主题缓存
-                await useBookStore.getState().loadThemes();
-            }
-        } catch (e) {
-            console.error('Failed to uncollect theme:', e);
             throw e;
         }
     }

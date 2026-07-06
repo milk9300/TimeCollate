@@ -200,7 +200,6 @@ export function Lobby() {
                 category: bookData.category,
                 createdAt: Date.now(),
                 pages: [],
-                theme: 'classic',
                 pageSize: 'A4'
             };
             await bookService.saveBook(newBook);
@@ -239,9 +238,9 @@ export function Lobby() {
     const handleSaveBookInfo = async (updates: Partial<Book>) => {
         const { bookId } = editModal;
         try {
-            const book = await bookService.getBook(bookId);
-            if (book) {
-                const updatedBook = { ...book, ...updates };
+            const data = await bookService.getBook(bookId);
+            if (data) {
+                const updatedBook = { ...data.book, ...updates, pages: data.pages };
                 await bookService.saveBook(updatedBook);
                 // 更新本地列表
                 setBooks(books.map(b => b.id === bookId ? { ...b, ...updates } : b));

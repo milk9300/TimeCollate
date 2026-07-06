@@ -35,12 +35,13 @@ router.get('/presigned', async (req, res) => {
     try {
         const fileName = req.query.fileName as string;
         const contentType = req.query.contentType as string;
+        const customKey = req.query.customKey as string;
 
         if (!fileName || !contentType) {
             return sendBadRequest(res, 'fileName and contentType are required');
         }
 
-        const { uploadUrl, ossKey } = await getPresignedUploadUrl(fileName, contentType);
+        const { uploadUrl, ossKey } = await getPresignedUploadUrl(fileName, contentType, 900, customKey);
         const signedUrl = getSignedUrl(ossKey, 7200);
 
         sendSuccess(res, {

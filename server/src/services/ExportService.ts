@@ -31,10 +31,33 @@ export class ExportService {
             throw new Error(`Unsupported export format: ${format}`);
         }
 
-        const book = await bookService.getBook(bookId);
-        if (!book) {
+        const result = await bookService.getBook(bookId);
+        if (!result) {
             throw new Error('Book not found');
         }
+        const { book: rawBook, cover, pages } = result;
+
+        const bookPages = [...(pages || [])];
+        if (cover) {
+            bookPages.unshift({
+                id: cover.id,
+                bookId: rawBook.id,
+                pageTitle: '书封',
+                isChapterStart: false,
+                content: '',
+                photos: [],
+                templateId: 'book-cover',
+                sortOrder: -1,
+                elements: cover.frontElements || [],
+                background: cover.frontBackground || { color: '#FFFFFF', gridPattern: false },
+                pageType: 'cover'
+            });
+        }
+
+        const book = {
+            ...rawBook,
+            pages: bookPages
+        };
 
         try {
             if (isPdf) this.concurrentPdfCount++;

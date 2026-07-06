@@ -9,19 +9,31 @@ import {
     Trash2,
     ArrowRight,
     User,
-    Calendar
+    Calendar,
+    Eye,
+    ChevronLeft,
+    ChevronRight,
+    X
 } from 'lucide-react';
 import { getBookService } from '../../../services/serviceFactory';
 import { MainLayout } from '../../common/components/MainLayout';
 import type { Book } from '../../../types';
 import { ConfirmModal } from '../../common/components/ConfirmModal';
+import { useAuthStore } from '../../../store/useAuthStore';
+import { BookCard } from '../components/BookCard';
 
 const bookService = getBookService();
 
 export function MyBookTemplates({ isEmbed = false }: { isEmbed?: boolean }) {
     const navigate = useNavigate();
+    const { user } = useAuthStore();
     const [templates, setTemplates] = useState<Book[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // 预览弹窗状态
+    const [previewBook, setPreviewBook] = useState<any | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const [activePageIdx, setActivePageIdx] = useState(0);
 
     // 套用模板弹窗状态
     const [applyModal, setApplyModal] = useState<{
@@ -60,6 +72,33 @@ export function MyBookTemplates({ isEmbed = false }: { isEmbed?: boolean }) {
     // 编辑模板
     const handleEditTemplate = (templateId: string) => {
         navigate(`/editor/${templateId}`);
+    };
+
+    // 触发预览
+    const handlePreviewTrigger = async (templateId: string) => {
+        setIsPreviewLoading(true);
+        try {
+            const fullBook = await bookService.getBook(templateId);
+            if (fullBook) {
+                setPreviewBook(fullBook);
+                setActivePageIdx(0);
+            }
+        } catch (error) {
+            console.error('Failed to load book template detail:', error);
+            alert('加载模板详情失败');
+        } finally {
+            setIsPreviewLoading(false);
+        }
+    };
+
+    // 卡片点击逻辑
+    const handleCardClick = (tpl: any) => {
+        const isPrivileged = user?.role === 'admin' || user?.role === 'designer';
+        if (isPrivileged) {
+            handleEditTemplate(tpl.id);
+        } else {
+            handlePreviewTrigger(tpl.id);
+        }
     };
 
     // 触发套用
@@ -153,79 +192,56 @@ export function MyBookTemplates({ isEmbed = false }: { isEmbed?: boolean }) {
                     <p className="text-slate-400 text-xs mt-1">您可以先在“我的书架”创作一本书，完成后点击[发布为模板]。</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {templates.map(tpl => (
-                        <div
-                            key={tpl.id}
-                            className="group bg-white rounded-3xl border border-slate-200/55 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col"
-                        >
-                            {/* 封面预览图 */}
-                            <div className="aspect-[4/3] bg-slate-100 relative overflow-hidden shrink-0">
-                                {tpl.coverThumbnailUrl ? (
-                                    <img
-                                        src={tpl.coverThumbnailUrl}
-                                        alt={tpl.title}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-2">
-                                        <BookOpen size={32} strokeWidth={1.5} />
-                                        <span className="text-xs font-bold">暂无封面</span>
-                                    </div>
-                                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-y-10 gap-x-6 justify-center">
+                    {templates.map(tpl => {
+                        const mappedBook = {
+                            id: tpl.id,
+                            title: tpl.title,
+                            createdAt: new Date(tpl.createdAt).getTime(),
+                            coverThumbnailUrl: tpl.coverThumbnailUrl,
+                            status: tpl.isPublic ? 'published' as const : 'private' as const,
+                            pageCount: tpl.pageCount,
+                            photoCount: tpl.photoCount
+                        };
 
-                                {/* 页数角标 */}
-                                <div className="absolute left-4 bottom-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[11px] font-black text-slate-700">
-                                    {tpl.pageCount || 0} P
-                                </div>
-                            </div>
-
-                            {/* 信息介绍 */}
-                            <div className="p-5 flex-1 flex flex-col gap-4">
-                                <div>
-                                    <h3 className="font-bold text-slate-800 line-clamp-1 group-hover:text-indigo-650 transition-colors">
+                        return (
+                            <div key={tpl.id} className="flex flex-col gap-3.5 group relative select-none">
+                                <BookCard
+                                    book={mappedBook}
+                                    onClick={() => handleCardClick(tpl)}
+                                    showCommunityStats={false}
+                                />
+                                
+                                {/* 书名与页数简报 */}
+                                <div className="text-center mt-1 px-2">
+                                    <h4 className="font-bold text-slate-800 text-[12.5px] line-clamp-1 group-hover:text-indigo-650 transition-colors font-sans">
                                         {tpl.title}
-                                    </h3>
-                                    <div className="flex items-center gap-4 mt-2 text-slate-450 text-[12px] font-bold">
-                                        <span className="flex items-center gap-1">
-                                            <Calendar size={12} />
-                                            {new Date(tpl.createdAt).toLocaleDateString()}
-                                        </span>
-                                    </div>
+                                    </h4>
+                                    <p className="text-[10px] text-slate-400 font-extrabold mt-1 uppercase tracking-wider">
+                                        {tpl.pageCount || 0} P
+                                    </p>
                                 </div>
 
-                                {/* 操作按钮组 */}
-                                <div className="mt-auto flex flex-col gap-2 pt-2">
+                                {/* 立体书封右上角悬浮管理层 */}
+                                <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 absolute top-2 right-2 z-10 bg-white/90 backdrop-blur-md p-1.5 rounded-xl shadow-lg border border-slate-200/40">
                                     <button
                                         onClick={() => handleApplyTrigger(tpl.id, tpl.title)}
-                                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-650 hover:bg-indigo-750 text-white rounded-2xl
-                                                 transition-all duration-350 font-bold text-[13px] cursor-pointer shadow-sm"
+                                        className="p-1.5 bg-indigo-50/70 hover:bg-indigo-600 text-indigo-650 hover:text-white rounded-lg transition-all cursor-pointer"
+                                        title="套用模板"
                                     >
-                                        套用模板
-                                        <ArrowRight size={13} />
+                                        <ArrowRight size={13} strokeWidth={2.5} />
                                     </button>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => handleEditTemplate(tpl.id)}
-                                            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-650 rounded-xl
-                                                     transition-colors font-bold text-[12px] cursor-pointer"
-                                        >
-                                            <Edit3 size={12} />
-                                            编辑设计
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteTrigger(tpl.id, tpl.title)}
-                                            className="flex items-center justify-center p-2.5 bg-rose-50 hover:bg-rose-550 text-rose-600 hover:text-white rounded-xl
-                                                     transition-colors cursor-pointer"
-                                            title="删除模板"
-                                        >
-                                            <Trash2 size={13} />
-                                        </button>
-                                    </div>
+                                    <button
+                                        onClick={() => handleDeleteTrigger(tpl.id, tpl.title)}
+                                        className="p-1.5 bg-rose-50/70 hover:bg-rose-600 text-rose-650 hover:text-white rounded-lg transition-all cursor-pointer"
+                                        title="删除模板"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
@@ -267,6 +283,122 @@ export function MyBookTemplates({ isEmbed = false }: { isEmbed?: boolean }) {
                             >
                                 {isApplying && <Loader2 className="animate-spin" size={16} />}
                                 确认套用
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 预览模板弹窗 */}
+            {previewBook && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-5xl h-[85vh] rounded-[32px] overflow-hidden shadow-2xl flex flex-col">
+                        {/* 弹窗头部 */}
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-800 tracking-tight">预览整书模板</h3>
+                                <p className="text-slate-450 text-[11px] font-bold mt-0.5">
+                                    当前正在预览《{previewBook.title}》的相册框架与页排版设计
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setPreviewBook(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-full transition-all cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* 预览区域 */}
+                        <div className="flex-1 overflow-y-auto p-8 bg-slate-50 flex flex-col items-center justify-center min-h-0">
+                            {previewBook.pages.length === 0 ? (
+                                <div className="text-slate-400 py-10 font-bold text-xs">该模板中暂无设计好的页面</div>
+                            ) : (
+                                <div className="w-full flex flex-col items-center gap-6">
+                                    {/* 对开页预览 */}
+                                    <div className="flex flex-col md:flex-row gap-6 items-center justify-center w-full max-w-4xl">
+                                        {/* 单页展示 */}
+                                        <div className="w-full md:w-1/2 aspect-[3/4] bg-white rounded-3xl border border-slate-150 shadow-xs p-8 flex flex-col relative select-none">
+                                            <div className="absolute top-4 left-6 text-[10px] font-black text-slate-350 tracking-wider">
+                                                Page {activePageIdx + 1}
+                                            </div>
+                                            {/* 页面内容模拟骨架 */}
+                                            <div className="flex-1 flex flex-col justify-between pt-4">
+                                                <div className="h-4 bg-slate-100 rounded-full w-2/3 mb-4" />
+                                                <div className="flex-1 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center text-slate-350 font-bold text-xs">
+                                                    [照片区域 - {previewBook.pages[activePageIdx]?.templateId || '默认'} 排版]
+                                                </div>
+                                                <div className="h-3 bg-slate-105 rounded-full w-full mt-4" />
+                                                <div className="h-3 bg-slate-105 rounded-full w-4/5 mt-2" />
+                                            </div>
+                                        </div>
+
+                                        {/* 如果有下一页，对开展示 */}
+                                        {activePageIdx + 1 < previewBook.pages.length ? (
+                                            <div className="w-full md:w-1/2 aspect-[3/4] bg-white rounded-3xl border border-slate-150 shadow-xs p-8 flex flex-col relative select-none">
+                                                <div className="absolute top-4 left-6 text-[10px] font-black text-slate-350 tracking-wider">
+                                                    Page {activePageIdx + 2}
+                                                </div>
+                                                <div className="flex-1 flex flex-col justify-between pt-4">
+                                                    <div className="h-4 bg-slate-100 rounded-full w-1/2 mb-4" />
+                                                    <div className="flex-1 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center text-slate-350 font-bold text-xs">
+                                                        [照片区域 - {previewBook.pages[activePageIdx + 1]?.templateId || '默认'} 排版]
+                                                    </div>
+                                                    <div className="h-3 bg-slate-105 rounded-full w-full mt-4" />
+                                                    <div className="h-3 bg-slate-105 rounded-full w-3/4 mt-2" />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="w-full md:w-1/2 aspect-[3/4] bg-slate-100/50 rounded-3xl border border-dashed border-slate-200 flex items-center justify-center text-slate-400 font-bold text-xs select-none">
+                                                封底
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* 翻页控制 */}
+                                    <div className="flex items-center gap-6 select-none mt-2">
+                                        <button
+                                            disabled={activePageIdx === 0}
+                                            onClick={() => setActivePageIdx(prev => Math.max(0, prev - 2))}
+                                            className={`p-2.5 bg-white border border-slate-200 shadow-xs rounded-full transition-all cursor-pointer
+                                                      ${activePageIdx === 0 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-50 active:scale-95 text-slate-650'}`}
+                                        >
+                                            <ChevronLeft size={18} />
+                                        </button>
+                                        <span className="text-xs font-black text-slate-500">
+                                            {activePageIdx + 1} - {Math.min(previewBook.pages.length, activePageIdx + 2)} / {previewBook.pages.length}
+                                        </span>
+                                        <button
+                                            disabled={activePageIdx + 2 >= previewBook.pages.length}
+                                            onClick={() => setActivePageIdx(prev => prev + 2)}
+                                            className={`p-2.5 bg-white border border-slate-200 shadow-xs rounded-full transition-all cursor-pointer
+                                                      ${activePageIdx + 2 >= previewBook.pages.length ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-50 active:scale-95 text-slate-650'}`}
+                                        >
+                                            <ChevronRight size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 弹窗底部操作 */}
+                        <div className="p-6 border-t border-slate-100 bg-white flex justify-end gap-3 shrink-0">
+                            <button
+                                onClick={() => setPreviewBook(null)}
+                                className="px-6 py-3 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-2xl font-bold text-[13.5px] transition-colors cursor-pointer"
+                            >
+                                关闭预览
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const tplId = previewBook.id;
+                                    const tplTitle = previewBook.title;
+                                    setPreviewBook(null);
+                                    handleApplyTrigger(tplId, tplTitle);
+                                }}
+                                className="px-6 py-3 bg-indigo-650 hover:bg-indigo-750 text-white rounded-2xl font-bold text-[13.5px] shadow-lg shadow-indigo-100 transition-all cursor-pointer"
+                            >
+                                套用并应用该模板
                             </button>
                         </div>
                     </div>

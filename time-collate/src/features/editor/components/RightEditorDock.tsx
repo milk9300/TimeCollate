@@ -1,10 +1,10 @@
 import React from 'react';
-import { LayoutTemplate, Image, Sparkles, Settings2, Sliders } from 'lucide-react';
+import { LayoutTemplate, Image, Sparkles, Settings2, Sliders, Type } from 'lucide-react';
 import { useBookStore } from '../../../store';
 
 interface RightEditorDockProps {
-    activeTab: 'templates' | 'photos' | 'decorations' | 'global' | 'inspector' | null;
-    setActiveTab: (tab: 'templates' | 'photos' | 'decorations' | 'global' | 'inspector' | null) => void;
+    activeTab: 'templates' | 'photos' | 'text' | 'decorations' | 'global' | 'inspector' | null;
+    setActiveTab: (tab: 'templates' | 'photos' | 'text' | 'decorations' | 'global' | 'inspector' | null) => void;
     isDrawerOpen: boolean;
     setIsDrawerOpen: (open: boolean) => void;
 }
@@ -23,6 +23,7 @@ export const RightEditorDock: React.FC<RightEditorDockProps> = ({
     const dockItems = React.useMemo(() => [
         { id: 'templates' as const, label: '排版模板', icon: <LayoutTemplate size={20} /> },
         { id: 'photos' as const, label: '照片图库', icon: <Image size={20} /> },
+        { id: 'text' as const, label: '添加文字', icon: <Type size={20} /> },
         { id: 'decorations' as const, label: '设计素材', icon: <Sparkles size={20} /> },
         { id: 'global' as const, label: '全局配置', icon: <Settings2 size={20} /> }
     ], []);

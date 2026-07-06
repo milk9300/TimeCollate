@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useBookStore, getVirtualChapters } from '../../../store';
+import { useBookStore, getVirtualChapters, useConvertedPages } from '../../../store';
 import { Upload, Trash2, Check, AlertCircle } from 'lucide-react';
 import { getPhotoForSlot } from '../../../utils/slotHelper';
 import { getThumbnailUrl } from '../../../utils/cdn';
@@ -23,10 +23,10 @@ export const PhotoAssetPanel: React.FC<PhotoAssetPanelProps> = ({
 
     if (!currentBook) return null;
 
+    const pages = useConvertedPages();
     const chapters = React.useMemo(() => {
-        if (!currentBook || !currentBook.pages) return [];
-        return getVirtualChapters(currentBook.pages);
-    }, [currentBook]);
+        return getVirtualChapters(pages);
+    }, [pages]);
 
     const targetChapterId = activeChapterId || (chapters.length > 0 ? chapters[0].id : null);
     const targetPageId = activePageId || (chapters.length > 0 && chapters[0].pages.length > 0 ? chapters[0].pages[0].id : null);
@@ -42,8 +42,14 @@ export const PhotoAssetPanel: React.FC<PhotoAssetPanelProps> = ({
     const activeChapter = chapters.find(c => c.id === targetChapterId);
     const activePage = activeChapter?.pages.find(p => p.id === targetPageId);
 
-    const photos = (activePage?.photos || []).filter(p => p && p.url);
-    const activeTemplate = templates.find(t => t.id === activePage?.layout);
+    let photos = (activePage?.photos || []).filter(p => p && p.url);
+    if (activePage?.elements) {
+        const elementPhotos = activePage.elements
+            .filter(el => el.type === 'photo-frame' && (el as any).photo && (el as any).photo.url)
+            .map(el => (el as any).photo);
+        photos = [...photos, ...elementPhotos];
+    }
+    const activeTemplate = templates.find(t => t.id === activePage?.templateId);
 
     // 计算当前页面已在槽位中使用的图片ID集合
     const usedPhotoIds = new Set<string>();

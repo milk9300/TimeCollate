@@ -17,7 +17,7 @@ interface EditableTextProps {
     pageId?: string;
     photoId?: string;
     slotId?: string; // 新增：如果是多文本槽位，表示当前槽位的 ID
-    type: 'chapter-title' | 'chapter-date' | 'page-content' | 'photo-caption' | 'book-title' | 'book-author' | 'book-preface';
+    type: 'chapter-title' | 'chapter-date' | 'page-content' | 'photo-caption' | 'book-title' | 'book-author';
     className?: string;
     style?: React.CSSProperties;
     placeholder?: string;
@@ -118,8 +118,6 @@ export const EditableText: React.FC<EditableTextProps> = ({
             store.updateBookSettings({ title: newValue });
         } else if (type === 'book-author') {
             store.updateBookSettings({ author: newValue });
-        } else if (type === 'book-preface') {
-            store.updateBookSettings({ preface: newValue });
         } else if (type === 'chapter-title' && chapterId) {
             store.updateChapter(chapterId, { title: newValue });
         } else if (type === 'chapter-date' && chapterId) {
@@ -207,13 +205,14 @@ export const EditableText: React.FC<EditableTextProps> = ({
                     isEditing
                         ? 'bg-white text-gray-800 ring-2 ring-[#8b3dff] shadow-sm px-1.5 py-0.5 rounded min-w-[50px] z-30 cursor-text'
                         : isSelected
-                            ? 'bg-[#8b3dff]/5 rounded px-1.5 py-0.5 cursor-pointer select-none'
+                            ? 'bg-transparent rounded px-1.5 py-0.5 cursor-pointer select-none'
                             : 'hover:bg-primary/5 rounded px-1 -mx-1 cursor-pointer select-none hover:ring-1 hover:ring-dashed hover:ring-[#8b3dff]/40'
                 }`}
                 style={{
                     ...style,
                     textDecoration: slotStyle.textDecoration || (style?.textDecoration),
                     fontFamily: slotStyle.fontFamily || (style?.fontFamily),
+                    color: isEditing ? '#1f2937' : (slotStyle.color || style?.color),
                 }}
                 title="单击选中，双击进行编辑"
             >

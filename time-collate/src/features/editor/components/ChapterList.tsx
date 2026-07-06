@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useBookStore, getVirtualChapters } from '../../../store';
+import { useBookStore, getVirtualChapters, useConvertedPages } from '../../../store';
 import {
     DndContext,
     closestCenter,
@@ -96,10 +96,10 @@ export const ChapterList: React.FC<ChapterListProps> = ({
     const { currentBook, addChapter, deleteChapter, reorderChapters } = useBookStore();
     const [isCreating, setIsCreating] = useState(false);
 
+    const pages = useConvertedPages();
     const chapters = React.useMemo(() => {
-        if (!currentBook || !currentBook.pages) return [];
-        return getVirtualChapters(currentBook.pages);
-    }, [currentBook]);
+        return getVirtualChapters(pages);
+    }, [pages]);
 
     const sensors = useSensors(
         useSensor(PointerSensor),

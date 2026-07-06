@@ -15,7 +15,7 @@ export const cloneBookLayout = (originalBook: Book, currentUserId: string): Book
             pageTitle: page.pageTitle,
             isChapterStart: page.isChapterStart,
             sortOrder: page.sortOrder,
-            layout: page.layout,
+            templateId: page.templateId,
             content: page.content ? '在此处键入您的时光记忆...' : '', // 提示性占位文本
             photos: (page.photos || []).map(photo => {
                 // 保留 slotIndex 插槽索引以固定排版结构，彻底清除真实链接与 OSS 键
@@ -39,9 +39,7 @@ export const cloneBookLayout = (originalBook: Book, currentUserId: string): Book
         author: '', // 保存时会自动填充当前用户名
         createdAt: Date.now(),
         pages: clonedPages,
-        theme: originalBook.theme || 'classic',
         pageSize: originalBook.pageSize || 'A4',
-        preface: originalBook.preface ? '在此处撰写您的卷首寄语...' : undefined,
         isPublic: false,
         status: 'private',
         coverUrl: undefined,

@@ -1,5 +1,5 @@
 import { pool } from '../db/index.js';
-import type { Book, Page, Photo, ThemeType, PageSize, PaginatedResponse } from '../types/index.js';
+import type { Book, BookCover, Page, Photo, ThemeType, PageSize, PaginatedResponse } from '../types/index.js';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { getSignedUrl, signAvatarUrl } from './OssService.js';
 import { interactionService } from './InteractionService.js';
@@ -20,7 +20,7 @@ export class BookService {
         // 1. 获取分页书籍（带统计数据与当前用户的互动状态）
         const [rows] = await pool.query<RowDataPacket[]>(
             `SELECT 
-                b.id, b.user_id, b.title, b.author, b.type, b.theme, b.page_size, b.cover_url, b.cover_oss_key, b.show_preface, b.is_public, b.status, b.category, b.created_at,
+                b.id, b.user_id, b.title, b.author, b.type, b.page_size, b.cover_url, b.cover_oss_key, b.is_public, b.status, b.category, b.created_at, b.updated_at,
                 COALESCE(v.metric_value, 0) as views,
                 COALESCE(l.metric_value, 0) as likes,
                 COALESCE(f.metric_value, 0) as favorites,
@@ -56,16 +56,15 @@ export class BookService {
                 title: row.title,
                 author: row.author || '',
                 type: row.type as 'book' | 'template',
-                theme: row.theme as ThemeType,
                 pageSize: row.page_size as PageSize,
                 coverUrl: coverUrl || '',
                 coverThumbnailUrl: coverThumbnailUrl || '',
                 coverOssKey: row.cover_oss_key,
-                showPreface: row.show_preface !== undefined ? Boolean(row.show_preface) : true,
                 isPublic: Boolean(row.is_public),
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
+                updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
                 pages: [], // 列表接口不返回详细页面
                 views: row.views,
                 likes: row.likes,
@@ -94,7 +93,7 @@ export class BookService {
 
         let query = `
             SELECT 
-                b.id, b.user_id, b.title, b.author, b.type, b.theme, b.page_size, b.cover_url, b.cover_oss_key, b.show_preface, b.is_public, b.status, b.category, b.created_at,
+                b.id, b.user_id, b.title, b.author, b.type, b.page_size, b.cover_url, b.cover_oss_key, b.is_public, b.status, b.category, b.created_at, b.updated_at,
                 COALESCE(v.metric_value, 0) as views,
                 COALESCE(l.metric_value, 0) as likes,
                 COALESCE(f.metric_value, 0) as favorites,
@@ -170,16 +169,15 @@ export class BookService {
                 title: row.title,
                 author: row.author || '',
                 type: row.type as 'book' | 'template',
-                theme: row.theme as ThemeType,
                 pageSize: row.page_size as PageSize,
                 coverUrl: coverUrl || '',
                 coverThumbnailUrl: coverThumbnailUrl || '',
                 coverOssKey: row.cover_oss_key,
-                showPreface: row.show_preface !== undefined ? Boolean(row.show_preface) : true,
                 isPublic: Boolean(row.is_public),
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
+                updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
                 pages: [],
                 views: row.views,
                 likes: row.likes,
@@ -315,7 +313,7 @@ export class BookService {
     /**
      * 获取单本书籍详情（含所有嵌套数据）
      */
-    async getBook(id: string, userId?: string): Promise<Book | null> {
+    async getBook(id: string, userId?: string): Promise<{ book: Book; cover: BookCover | null; pages: Page[] } | null> {
         // 1. 获取书籍基础信息
         let query = 'SELECT * FROM books WHERE id = ? AND deleted_at IS NULL';
         let params: any[] = [id];
@@ -339,7 +337,53 @@ export class BookService {
         const coverUrl = signCoverUrl(bookRow.cover_url, bookRow.cover_oss_key, 7200);
         const coverThumbnailUrl = signCoverUrl(bookRow.cover_url, bookRow.cover_oss_key, 7200, 'image/resize,w_600/format,webp/quality,q_60');
 
-        // 2. 获取所有页面
+        // 2. 辅助函数：对画布元素中图片进行 OSS 签名
+        const signElements = (elements: any[]): any[] => {
+            if (!elements || !Array.isArray(elements)) return [];
+            return elements.map((el: any) => {
+                if (el.type === 'photo-frame' && el.photo) {
+                    const photoUrl = el.photo.ossKey
+                        ? getSignedUrl(el.photo.ossKey, 7200)
+                        : (el.photo.url && !el.photo.url.startsWith('blob:') && !el.photo.url.startsWith('data:') ? el.photo.url : '');
+                    return {
+                        ...el,
+                        photo: {
+                            ...el.photo,
+                            url: photoUrl
+                        }
+                    };
+                }
+                return el;
+            });
+        };
+
+        // 3. 获取封面信息
+        let cover: BookCover | null = null;
+        if (bookRow.cover_id) {
+            const [coverRows] = await pool.query<RowDataPacket[]>(
+                'SELECT * FROM book_covers WHERE id = ?',
+                [bookRow.cover_id]
+            );
+            if (coverRows.length > 0) {
+                const coverRow = coverRows[0];
+                const frontElements = coverRow.front_elements ? (typeof coverRow.front_elements === 'string' ? JSON.parse(coverRow.front_elements) : coverRow.front_elements) : {};
+                const backElements = coverRow.back_elements ? (typeof coverRow.back_elements === 'string' ? JSON.parse(coverRow.back_elements) : coverRow.back_elements) : {};
+
+                cover = {
+                    id: coverRow.id,
+                    bookId: coverRow.book_id,
+                    frontElements: signElements(frontElements.elements || frontElements.slots || []),
+                    backElements: signElements(backElements.elements || backElements.slots || []),
+                    frontBackground: frontElements.background || undefined,
+                    backBackground: backElements.background || frontElements.background || undefined,
+                    frontThumbnail: coverRow.front_thumbnail ? (signCoverUrl(coverRow.front_thumbnail, null, 7200) || undefined) : undefined,
+                    backThumbnail: coverRow.back_thumbnail ? (signCoverUrl(coverRow.back_thumbnail, null, 7200) || undefined) : undefined,
+                    version: Number(coverRow.version)
+                };
+            }
+        }
+
+        // 4. 获取所有内页
         const [pageRows] = await pool.query<RowDataPacket[]>(
             'SELECT * FROM pages WHERE book_id = ? ORDER BY sort_order',
             [id]
@@ -347,128 +391,133 @@ export class BookService {
 
         const pages: Page[] = [];
         for (const page of pageRows) {
-            let elements: any = {};
+            let elements: any = [];
             if (page.elements) {
                 try {
-                    elements = typeof page.elements === 'string' ? JSON.parse(page.elements) : page.elements;
+                    const parsed = typeof page.elements === 'string' ? JSON.parse(page.elements) : page.elements;
+                    elements = parsed.elements || parsed.slots || [];
                 } catch (e) {
                     // ignore
                 }
             }
 
-            if (elements.version === '2.0') {
-                // 这是一个全新的 V2.0 自由画布页面，直接还原新版数据结构
-                const elementsList = (elements.elements || []).map((el: any) => {
-                    // 对图片组件进行 OSS 签名升级
-                    if (el.type === 'photo-frame' && el.photo) {
-                        const photoUrl = el.photo.ossKey
-                            ? getSignedUrl(el.photo.ossKey, 7200)
-                            : (el.photo.url && !el.photo.url.startsWith('blob:') && !el.photo.url.startsWith('data:') ? el.photo.url : '');
-                        return {
-                            ...el,
-                            photo: {
-                                ...el.photo,
-                                url: photoUrl
-                            }
-                        };
-                    }
-                    return el;
-                });
-
-                pages.push({
-                    id: page.id,
-                    bookId: page.book_id,
-                    pageTitle: page.page_title || '',
-                    isChapterStart: Boolean(page.is_chapter_start),
-                    content: '', // V2.0 下清空旧的正文文本
-                    layout: page.layout_type,
-                    sortOrder: Number(page.sort_order),
-                    photos: [], // V2.0 下旧版照片列表清空，由 elements 的 photo-frame 接管
-                    elements: elementsList,
-                    background: elements.background
-                });
-            } else {
-                // 传统 V1.0 页面还原逻辑
-                const legacyContentJson = {
-                    slots: elements.slots || {},
-                    atmosphere: elements.atmosphere || 'default',
-                    fontFamily: elements.fontFamily || 'sans',
-                    backgroundImage: elements.backgroundImage || null,
-                    decorations: elements.decorations || [],
-                    elementOverrides: elements.elementOverrides || {}
-                };
-                const content = JSON.stringify(legacyContentJson);
-
-                const photosList: Photo[] = [];
-                const photos = elements.photos || [];
-                for (const photo of photos) {
-                    const photoUrl = photo.ossKey
-                        ? getSignedUrl(photo.ossKey, 7200)
-                        : (photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:') ? photo.url : '');
-                    const thumbnailUrl = photo.ossKey
-                        ? getSignedUrl(photo.ossKey, 7200, 'image/resize,w_300/format,webp/quality,q_60')
-                        : (photo.url && !photo.url.startsWith('blob:') && !photo.url.startsWith('data:') ? photo.url : '');
-
-                    photosList.push({
-                        id: photo.id,
-                        url: photoUrl,
-                        thumbnailUrl: thumbnailUrl,
-                        caption: photo.caption || '',
-                        width: photo.width,
-                        height: photo.height,
-                        ossKey: photo.ossKey,
-                        scale: photo.scale !== null ? Number(photo.scale) : 1.0,
-                        xOffset: photo.xOffset !== null ? Number(photo.xOffset) : 50,
-                        yOffset: photo.yOffset !== null ? Number(photo.yOffset) : 50,
-                        assetId: photo.assetId
-                    });
+            let background: any = {};
+            if (page.background) {
+                try {
+                    background = typeof page.background === 'string' ? JSON.parse(page.background) : page.background;
+                } catch (e) {
+                    // ignore
                 }
-
-                pages.push({
-                    id: page.id,
-                    bookId: page.book_id,
-                    pageTitle: page.page_title || '',
-                    isChapterStart: Boolean(page.is_chapter_start),
-                    content,
-                    layout: page.layout_type,
-                    sortOrder: Number(page.sort_order),
-                    photos: photosList,
-                });
             }
+
+            const signedEls = signElements(elements);
+
+            pages.push({
+                id: page.id,
+                bookId: page.book_id,
+                pageTitle: page.page_title || '',
+                isChapterStart: Boolean(page.is_chapter_start),
+                content: '',
+                photos: [],
+                templateId: page.template_id,
+                sortOrder: Number(page.sort_order),
+                elements: signedEls,
+                background,
+                thumbnail: page.thumbnail ? (signCoverUrl(page.thumbnail, null, 7200) || undefined) : undefined,
+                templateOriginType: page.template_origin_type,
+                templateOriginId: page.template_origin_id
+            });
         }
 
         // 获取实时统计与互动状态 (缓存优先)
         const stats = await interactionService.getEntityInteractions('book', id, userId);
 
-        return {
+        const book: Book = {
             id: bookRow.id,
             userId: bookRow.user_id,
             title: bookRow.title,
             author: bookRow.author || '',
             type: bookRow.type as 'book' | 'template',
-            theme: bookRow.theme as ThemeType,
             pageSize: bookRow.page_size as PageSize,
             coverUrl: coverUrl || '',
             coverThumbnailUrl: coverThumbnailUrl || '',
             coverOssKey: bookRow.cover_oss_key,
-            preface: bookRow.preface || '',
-            showPreface: bookRow.show_preface !== undefined ? Boolean(bookRow.show_preface) : true,
+            coverId: bookRow.cover_id || undefined,
             isPublic: Boolean(bookRow.is_public),
             status: bookRow.status,
             category: bookRow.category || undefined,
             createdAt: Number(bookRow.created_at),
-            pages,
+            updatedAt: bookRow.updated_at ? new Date(bookRow.updated_at).getTime() : undefined,
+            pages: [], // V2 结构中 pages 独立返回，这里留空
             views: stats.views,
             likes: stats.likes,
             favorites: stats.favorites,
             liked: stats.liked,
             favorited: stats.favorited
         };
+
+        return { book, cover, pages };
     }
 
     /**
-     * 保存书籍（新建或更新）
-     * 使用事务确保数据一致性
+     * 对 elements 列表中的 oss_key 进行预加载注册为 user_assets
+     */
+    private async registerAssetsFromElements(connection: any, userId: string, elements: any[]): Promise<Map<string, string>> {
+        const allOssKeys = new Set<string>();
+        for (const el of elements) {
+            if (el.type === 'photo-frame' && el.photo && el.photo.ossKey) {
+                allOssKeys.add(el.photo.ossKey);
+            }
+        }
+
+        const registeredAssetIds = new Map<string, string>();
+        if (allOssKeys.size > 0) {
+            const [existingAssets] = await connection.query(
+                'SELECT id, oss_key FROM user_assets WHERE oss_key IN (?)',
+                [Array.from(allOssKeys)]
+            );
+            for (const asset of existingAssets) {
+                registeredAssetIds.set(asset.oss_key, asset.id);
+            }
+        }
+
+        for (const el of elements) {
+            if (el.type === 'photo-frame' && el.photo && el.photo.ossKey) {
+                const ossKey = el.photo.ossKey;
+                let assetId = el.photo.assetId || registeredAssetIds.get(ossKey);
+                if (!assetId) {
+                    assetId = uuidv4();
+                    const now = Date.now();
+                    const defaultName = el.photo.caption || '上传照片';
+                    const defaultMeta = JSON.stringify({
+                        originalName: defaultName,
+                        mimeType: 'image/jpeg',
+                        width: el.photo.width || null,
+                        height: el.photo.height || null
+                    });
+
+                    await connection.query(
+                        `INSERT INTO user_assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
+                         VALUES (?, NULL, ?, 'photo', ?, '', NULL, ?, 0, ?, ?, ?, ?)`,
+                        [assetId, defaultName, userId, ossKey, el.photo.width || null, el.photo.height || null, defaultMeta, now]
+                    );
+
+                    await connection.query(
+                        `INSERT INTO user_photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
+                        [uuidv4(), assetId]
+                    );
+
+                    registeredAssetIds.set(ossKey, assetId);
+                }
+                el.photo.assetId = assetId;
+            }
+        }
+
+        return registeredAssetIds;
+    }
+
+    /**
+     * 保存书籍元数据（新建或更新）
      */
     async saveBook(book: Book): Promise<Book> {
         const connection = await pool.getConnection();
@@ -476,39 +525,16 @@ export class BookService {
         try {
             await connection.beginTransaction();
 
-            // 1. 获取现有书籍的所有 OSS keys（用于后续清理孤儿文件）
             const [existingRows] = await connection.query<RowDataPacket[]>(
-                'SELECT id, cover_oss_key FROM books WHERE id = ?',
+                'SELECT id, cover_id, cover_oss_key FROM books WHERE id = ?',
                 [book.id]
             );
 
-            const oldOssKeys = new Set<string>();
-            if (existingRows.length > 0) {
-                if (existingRows[0].cover_oss_key) {
-                    oldOssKeys.add(existingRows[0].cover_oss_key);
-                }
-                const [pageRows] = await connection.query<RowDataPacket[]>(
-                    'SELECT elements FROM pages WHERE book_id = ?',
-                    [book.id]
-                );
-                for (const row of pageRows) {
-                    if (row.elements) {
-                        try {
-                            const parsed = typeof row.elements === 'string' ? JSON.parse(row.elements) : row.elements;
-                            const photos = parsed.photos || [];
-                            for (const p of photos) {
-                                if (p.ossKey) {
-                                    oldOssKeys.add(p.ossKey);
-                                }
-                            }
-                        } catch (e) {
-                            // ignore
-                        }
-                    }
-                }
+            let coverUrl = book.coverUrl;
+            if (coverUrl && (coverUrl.startsWith('blob:') || coverUrl.startsWith('data:'))) {
+                coverUrl = undefined;
             }
 
-            // 2. 更新或新建书籍流程
             if (existingRows.length > 0) {
                 // 更新时校验所有权
                 const [ownerCheck] = await connection.query<RowDataPacket[]>(
@@ -519,235 +545,355 @@ export class BookService {
                     throw new Error('无权修改此书籍');
                 }
 
-                // 更新书籍
-                let coverUrl = book.coverUrl;
-                if (coverUrl && (coverUrl.startsWith('blob:') || coverUrl.startsWith('data:'))) {
-                    coverUrl = undefined;
-                }
+                // 更新书籍基本元数据
                 await connection.query(
-                    'UPDATE books SET title = ?, author = ?, type = ?, theme = ?, page_size = ?, cover_url = ?, cover_oss_key = ?, preface = ?, show_preface = ?, is_public = ?, category = ? WHERE id = ?',
-                    [book.title, book.author, book.type || 'book', book.theme, book.pageSize, coverUrl || null, book.coverOssKey || null, book.preface || null, book.showPreface !== false ? 1 : 0, book.isPublic ? 1 : 0, book.category || null, book.id]
+                    'UPDATE books SET title = ?, author = ?, type = ?, page_size = ?, cover_url = ?, cover_oss_key = ?, is_public = ?, category = ? WHERE id = ?',
+                    [book.title, book.author, book.type || 'book', book.pageSize, coverUrl || null, book.coverOssKey || null, book.isPublic ? 1 : 0, book.category || null, book.id]
                 );
-
-                // 删除旧的页面
-                await connection.query('DELETE FROM pages WHERE book_id = ?', [book.id]);
             } else {
                 // 新建书籍
-                let coverUrl = book.coverUrl;
-                if (coverUrl && (coverUrl.startsWith('blob:') || coverUrl.startsWith('data:'))) {
-                    coverUrl = undefined;
-                }
+                const coverId = uuidv4();
+                
+                // 1. 初始化空白封面
                 await connection.query(
-                    'INSERT INTO books (id, user_id, title, author, type, theme, page_size, cover_url, cover_oss_key, preface, show_preface, is_public, status, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [book.id, book.userId, book.title, book.author, book.type || 'book', book.theme, book.pageSize, coverUrl || null, book.coverOssKey || null, book.preface || null, book.showPreface !== false ? 1 : 0, book.isPublic ? 1 : 0, book.status || 'private', book.category || null, book.createdAt]
+                    `INSERT INTO book_covers (id, book_id, front_elements, back_elements, front_thumbnail, back_thumbnail, version) 
+                     VALUES (?, ?, '{"version":"2.0","elements":[]}', '{"version":"2.0","elements":[]}', NULL, NULL, 1)`,
+                    [coverId, book.id]
                 );
-            }
 
-            // 3. 收集所有 ossKeys，防 N+1 预查询并自动注册素材
-            const allOssKeys = new Set<string>();
-            const newOssKeys = new Set<string>();
-            if (book.coverOssKey) {
-                newOssKeys.add(book.coverOssKey);
-            }
-            for (const page of book.pages) {
-                if (page.elements && Array.isArray(page.elements)) {
-                    // V2.0 自由组件提取 ossKeys
-                    for (const el of page.elements) {
-                        if (el.type === 'photo-frame' && el.photo && el.photo.ossKey) {
-                            allOssKeys.add(el.photo.ossKey);
-                            newOssKeys.add(el.photo.ossKey);
-                        }
-                    }
-                } else if (page.photos) {
-                    // V1.0 照片提取 ossKeys
-                    for (const photo of page.photos) {
-                        if (photo.ossKey) {
-                            allOssKeys.add(photo.ossKey);
-                            newOssKeys.add(photo.ossKey);
-                        }
-                    }
-                }
-            }
-
-            const registeredAssetIds = new Map<string, string>();
-            if (allOssKeys.size > 0) {
-                const [existingAssets] = await connection.query<RowDataPacket[]>(
-                    'SELECT id, oss_key FROM assets WHERE oss_key IN (?)',
-                    [Array.from(allOssKeys)]
-                );
-                for (const asset of existingAssets) {
-                    registeredAssetIds.set(asset.oss_key, asset.id);
-                }
-            }
-
-            // 4. 遍历插入页面，并构建 elements JSON
-            for (let pi = 0; pi < book.pages.length; pi++) {
-                const page = book.pages[pi];
-                let elementsJson: any;
-
-                if (page.elements && Array.isArray(page.elements)) {
-                    // 这是一个全新的 V2.0 画布页面
-                    const processedElements = [];
-                    for (const el of page.elements) {
-                        const cloneEl = { ...el };
-                        if (cloneEl.type === 'photo-frame' && cloneEl.photo) {
-                            let photoUrl = cloneEl.photo.url;
-                            if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
-                                photoUrl = '';
-                            }
-
-                            let assetId = cloneEl.photo.assetId || (cloneEl.photo.ossKey ? registeredAssetIds.get(cloneEl.photo.ossKey) : undefined);
-                            if (!assetId && cloneEl.photo.ossKey) {
-                                assetId = uuidv4();
-                                const now = Date.now();
-                                const defaultName = cloneEl.photo.caption || '上传照片';
-                                const defaultMeta = JSON.stringify({
-                                    originalName: defaultName,
-                                    mimeType: 'image/jpeg',
-                                    width: cloneEl.photo.width || null,
-                                    height: cloneEl.photo.height || null
-                                });
-
-                                await connection.query(
-                                    `INSERT INTO assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
-                                     VALUES (?, NULL, ?, 'photo', ?, '', NULL, ?, 0, ?, ?, ?, ?)`,
-                                    [assetId, defaultName, book.userId, cloneEl.photo.ossKey, cloneEl.photo.width || null, cloneEl.photo.height || null, defaultMeta, now]
-                                );
-
-                                await connection.query(
-                                    `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
-                                    [uuidv4(), assetId]
-                                );
-
-                                registeredAssetIds.set(cloneEl.photo.ossKey, assetId);
-                            }
-
-                            cloneEl.photo = {
-                                ...cloneEl.photo,
-                                url: photoUrl,
-                                assetId
-                            };
-                        }
-                        processedElements.push(cloneEl);
-                    }
-
-                    elementsJson = {
-                        version: "2.0",
-                        background: page.background || { color: '#FFFFFF' },
-                        elements: processedElements
-                    };
-                } else {
-                    // 传统 V1.0 页面还原逻辑
-                    let parsedContent: any = {};
-                    if (page.content) {
-                        try {
-                            parsedContent = typeof page.content === 'string' ? JSON.parse(page.content) : page.content;
-                        } catch (e) {
-                            parsedContent = {
-                                slots: {
-                                    'page-content': { content: page.content },
-                                    'default': { content: page.content }
-                                }
-                            };
-                        }
-                    }
-
-                    const processedPhotos = [];
-                    for (const photo of page.photos) {
-                        let photoUrl = photo.url;
-                        if (photoUrl && (photoUrl.startsWith('blob:') || photoUrl.startsWith('data:'))) {
-                            photoUrl = '';
-                        }
-
-                        let assetId = photo.assetId || (photo.ossKey ? registeredAssetIds.get(photo.ossKey) : undefined);
-                        if (!assetId && photo.ossKey) {
-                            assetId = uuidv4();
-                            const now = Date.now();
-                            const defaultName = photo.caption || '上传照片';
-                            const defaultMeta = JSON.stringify({
-                                originalName: defaultName,
-                                mimeType: 'image/jpeg',
-                                width: photo.width || null,
-                                height: photo.height || null
-                            });
-
-                            await connection.query(
-                                `INSERT INTO assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
-                                 VALUES (?, NULL, ?, 'photo', ?, '', NULL, ?, 0, ?, ?, ?, ?)`,
-                                [assetId, defaultName, book.userId, photo.ossKey, photo.width || null, photo.height || null, defaultMeta, now]
-                            );
-
-                            await connection.query(
-                                `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
-                                [uuidv4(), assetId]
-                            );
-
-                            registeredAssetIds.set(photo.ossKey, assetId);
-                        }
-
-                        processedPhotos.push({
-                            id: photo.id || uuidv4(),
-                            url: photoUrl,
-                            caption: photo.caption || '',
-                            width: photo.width || null,
-                            height: photo.height || null,
-                            ossKey: photo.ossKey || undefined,
-                            scale: photo.scale !== undefined ? Number(photo.scale) : 1.0,
-                            xOffset: photo.xOffset !== undefined ? Number(photo.xOffset) : 50,
-                            yOffset: photo.yOffset !== undefined ? Number(photo.yOffset) : 50,
-                            assetId
-                        });
-                    }
-
-                    elementsJson = {
-                        version: "1.0",
-                        slots: parsedContent.slots || {},
-                        atmosphere: parsedContent.atmosphere || 'default',
-                        fontFamily: parsedContent.fontFamily || 'sans',
-                        backgroundImage: parsedContent.backgroundImage || null,
-                        decorations: parsedContent.decorations || [],
-                        elementOverrides: parsedContent.elementOverrides || {},
-                        photos: processedPhotos
-                    };
-                }
-
-                let pageType = 'content';
-                if (page.layout === 'book-cover') {
-                    pageType = 'cover';
-                } else if (page.layout === 'back-cover') {
-                    pageType = 'ending';
-                }
-
+                // 2. 插入书籍记录
                 await connection.query(
-                    'INSERT INTO pages (id, book_id, page_title, is_chapter_start, elements, page_type, layout_type, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    [page.id, book.id, page.pageTitle || '', page.isChapterStart ? 1 : 0, JSON.stringify(elementsJson), pageType, page.layout || 'grid', pi]
+                    'INSERT INTO books (id, user_id, title, author, type, page_size, cover_url, cover_oss_key, is_public, status, category, cover_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [book.id, book.userId, book.title, book.author, book.type || 'book', book.pageSize, coverUrl || null, book.coverOssKey || null, book.isPublic ? 1 : 0, book.status || 'private', book.category || null, coverId, book.createdAt]
                 );
             }
 
             await connection.commit();
-
-            // 4. 异步清理不再使用的 OSS 文件
-            const orphanedKeys = Array.from(oldOssKeys).filter(key => !newOssKeys.has(key));
-            if (orphanedKeys.length > 0) {
-                // 动态导入避免循环依赖
-                import('./OssService.js').then(({ deleteFromOss }) => {
-                    orphanedKeys.forEach(key => {
-                        deleteFromOss(key).catch(err => {
-                            console.error(`🗑️ Failed to delete orphaned OSS file: ${key}`, err);
-                        });
-                        console.log(`🗑️ Triggered deletion for orphaned OSS file: ${key}`);
-                    });
-                }).catch(err => {
-                    console.error('Failed to import OssService for cleanup', err);
-                });
-            }
-
             return book;
         } catch (error) {
             await connection.rollback();
             throw error;
         } finally {
             connection.release();
+        }
+    }
+
+    /**
+     * 保存封面/封底信息
+     */
+    //#region Save Cover and Page Operations
+    /**
+     * 保存封面/封底信息 (支持局部更新)
+     */
+    async saveCover(userId: string, bookId: string, coverData: Partial<BookCover>): Promise<BookCover> {
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            // 1. 校验作品所有权
+            const [ownerCheck] = await connection.query<RowDataPacket[]>(
+                'SELECT id, cover_id FROM books WHERE id = ? AND user_id = ?',
+                [bookId, userId]
+            );
+            if (ownerCheck.length === 0) {
+                throw new Error('Permission denied: not the owner of this book');
+            }
+
+            const bookRow = ownerCheck[0];
+            let coverId = bookRow.cover_id;
+            let existingCover: any = null;
+
+            if (coverId) {
+                const [coverRows] = await connection.query<RowDataPacket[]>(
+                    'SELECT * FROM book_covers WHERE id = ?',
+                    [coverId]
+                );
+                if (coverRows.length > 0) {
+                    existingCover = coverRows[0];
+                }
+            }
+
+            // 提取并自动注册 elements 中的图片资产
+            const frontEls = coverData.frontElements;
+            if (frontEls !== undefined) {
+                await this.registerAssetsFromElements(connection, userId, frontEls);
+            }
+
+            const backEls = coverData.backElements;
+            if (backEls !== undefined) {
+                await this.registerAssetsFromElements(connection, userId, backEls);
+            }
+
+            if (coverId && existingCover) {
+                // 动态构建更新字段和参数列表，避免未传递的字段被覆盖为默认值
+                const updateFields: string[] = [];
+                const queryParams: any[] = [];
+
+                const existingFront = existingCover.front_elements
+                    ? (typeof existingCover.front_elements === 'string' ? JSON.parse(existingCover.front_elements) : existingCover.front_elements)
+                    : {};
+                const existingBack = existingCover.back_elements
+                    ? (typeof existingCover.back_elements === 'string' ? JSON.parse(existingCover.back_elements) : existingCover.back_elements)
+                    : {};
+
+                if (frontEls !== undefined || coverData.frontBackground !== undefined) {
+                    const finalFrontEls = frontEls !== undefined ? frontEls : (existingFront.elements || existingFront.slots || []);
+                    const finalFrontBg = coverData.frontBackground !== undefined ? coverData.frontBackground : (existingFront.background || null);
+
+                    updateFields.push('front_elements = ?');
+                    updateFields.push('version = version + 1');
+                    queryParams.push(JSON.stringify({ version: '2.0', elements: finalFrontEls, background: finalFrontBg }));
+                }
+
+                if (backEls !== undefined || coverData.backBackground !== undefined) {
+                    const finalBackEls = backEls !== undefined ? backEls : (existingBack.elements || existingBack.slots || []);
+                    const finalBackBg = coverData.backBackground !== undefined ? coverData.backBackground : (existingBack.background || null);
+
+                    updateFields.push('back_elements = ?');
+                    if (!updateFields.includes('version = version + 1')) {
+                        updateFields.push('version = version + 1');
+                    }
+                    queryParams.push(JSON.stringify({ version: '2.0', elements: finalBackEls, background: finalBackBg }));
+                }
+
+                if (coverData.frontThumbnail !== undefined) {
+                    updateFields.push('front_thumbnail = ?');
+                    queryParams.push(coverData.frontThumbnail);
+                }
+
+                if (coverData.backThumbnail !== undefined) {
+                    updateFields.push('back_thumbnail = ?');
+                    queryParams.push(coverData.backThumbnail);
+                }
+
+                if (updateFields.length > 0) {
+                    queryParams.push(coverId);
+                    await connection.query(
+                        `UPDATE book_covers SET ${updateFields.join(', ')} WHERE id = ?`,
+                        queryParams
+                    );
+                }
+            } else {
+                // 新建封面 (如果没有 cover_id)
+                coverId = uuidv4();
+                const frontElementsJson = JSON.stringify({
+                    version: '2.0',
+                    elements: frontEls || [],
+                    background: coverData.frontBackground || null
+                });
+                const backElementsJson = JSON.stringify({
+                    version: '2.0',
+                    elements: backEls || [],
+                    background: coverData.backBackground || null
+                });
+                
+                await connection.query(
+                    `INSERT INTO book_covers (id, book_id, front_elements, back_elements, front_thumbnail, back_thumbnail, version) 
+                     VALUES (?, ?, ?, ?, ?, ?, 1)`,
+                    [
+                        coverId, 
+                        bookId, 
+                        frontElementsJson, 
+                        backElementsJson, 
+                        coverData.frontThumbnail || null, 
+                        coverData.backThumbnail || null
+                    ]
+                );
+
+                // 更新书籍外键
+                await connection.query(
+                    'UPDATE books SET cover_id = ? WHERE id = ?',
+                    [coverId, bookId]
+                );
+            }
+
+            await connection.commit();
+
+            // 解析最终的封面数据结构进行返回
+            const parseCoverElements = (elementsData: any) => {
+                if (!elementsData) return [];
+                try {
+                    const parsed = typeof elementsData === 'string' ? JSON.parse(elementsData) : elementsData;
+                    return parsed.elements || parsed.slots || [];
+                } catch (e) {
+                    return [];
+                }
+            };
+
+            const parseCoverBackground = (elementsData: any) => {
+                if (!elementsData) return null;
+                try {
+                    const parsed = typeof elementsData === 'string' ? JSON.parse(elementsData) : elementsData;
+                    return parsed.background || null;
+                } catch (e) {
+                    return null;
+                }
+            };
+
+            const finalFrontElements = frontEls !== undefined 
+                ? frontEls 
+                : parseCoverElements(existingCover?.front_elements);
+            
+            const finalBackElements = backEls !== undefined 
+                ? backEls 
+                : parseCoverElements(existingCover?.back_elements);
+
+            const finalFrontBackground = coverData.frontBackground !== undefined
+                ? coverData.frontBackground
+                : parseCoverBackground(existingCover?.front_elements) || undefined;
+
+            const finalBackBackground = coverData.backBackground !== undefined
+                ? coverData.backBackground
+                : parseCoverBackground(existingCover?.back_elements) || parseCoverBackground(existingCover?.front_elements) || undefined;
+
+            return {
+                id: coverId,
+                bookId,
+                frontElements: finalFrontElements,
+                backElements: finalBackElements,
+                frontBackground: finalFrontBackground,
+                backBackground: finalBackBackground,
+                frontThumbnail: coverData.frontThumbnail !== undefined ? coverData.frontThumbnail : existingCover?.front_thumbnail,
+                backThumbnail: coverData.backThumbnail !== undefined ? coverData.backThumbnail : existingCover?.back_thumbnail,
+                version: existingCover ? Number(existingCover.version) + (frontEls !== undefined || backEls !== undefined || coverData.frontBackground !== undefined || coverData.backBackground !== undefined ? 1 : 0) : 1
+            };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    /**
+     * 保存单页 (局部更新)
+     */
+    async savePage(userId: string, pageId: string, pageData: Partial<Page>): Promise<Page> {
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            // 1. 获取现有页面数据并校验所有权
+            const [ownerCheck] = await connection.query<RowDataPacket[]>(
+                `SELECT p.*, b.user_id 
+                 FROM pages p 
+                 JOIN books b ON p.book_id = b.id 
+                 WHERE p.id = ?`,
+                [pageId]
+            );
+            if (ownerCheck.length === 0) {
+                throw new Error('Page not found');
+            }
+            if (ownerCheck[0].user_id !== userId) {
+                throw new Error('Permission denied: not the owner of this page');
+            }
+
+            const existingPage = ownerCheck[0];
+
+            // 动态构建更新字段和参数，防止未传递的字段被覆盖为默认值
+            const updateFields: string[] = [];
+            const queryParams: any[] = [];
+
+            let elements = pageData.elements;
+            if (elements !== undefined) {
+                // 自动注册图片资产
+                await this.registerAssetsFromElements(connection, userId, elements);
+                const elementsJson = JSON.stringify({ version: '2.0', elements });
+                updateFields.push('elements = ?');
+                queryParams.push(elementsJson);
+            }
+
+            if (pageData.pageTitle !== undefined) {
+                updateFields.push('page_title = ?');
+                queryParams.push(pageData.pageTitle);
+            }
+
+            if (pageData.background !== undefined) {
+                const backgroundJson = pageData.background ? JSON.stringify(pageData.background) : null;
+                updateFields.push('background = ?');
+                queryParams.push(backgroundJson);
+            }
+
+            if (pageData.thumbnail !== undefined) {
+                updateFields.push('thumbnail = ?');
+                queryParams.push(pageData.thumbnail);
+            }
+
+            if (pageData.sortOrder !== undefined) {
+                updateFields.push('sort_order = ?');
+                queryParams.push(pageData.sortOrder);
+            }
+
+            if (updateFields.length > 0) {
+                queryParams.push(pageId);
+                await connection.query(
+                    `UPDATE pages SET ${updateFields.join(', ')} WHERE id = ?`,
+                    queryParams
+                );
+            }
+
+            await connection.commit();
+
+            // 解析最终的 elements 和 background 返回
+            const parsePageElements = (elementsData: any) => {
+                if (!elementsData) return [];
+                try {
+                    const parsed = typeof elementsData === 'string' ? JSON.parse(elementsData) : elementsData;
+                    return parsed.elements || parsed.slots || [];
+                } catch (e) {
+                    return [];
+                }
+            };
+
+            const finalElements = elements !== undefined
+                ? elements
+                : parsePageElements(existingPage.elements);
+
+            let finalBackground = existingPage.background;
+            if (pageData.background !== undefined) {
+                finalBackground = pageData.background;
+            } else if (existingPage.background) {
+                try {
+                    finalBackground = typeof existingPage.background === 'string' 
+                        ? JSON.parse(existingPage.background) 
+                        : existingPage.background;
+                } catch (e) {
+                    finalBackground = {};
+                }
+            }
+
+            return {
+                id: pageId,
+                bookId: existingPage.book_id,
+                pageTitle: pageData.pageTitle !== undefined ? pageData.pageTitle : existingPage.page_title,
+                isChapterStart: Boolean(existingPage.is_chapter_start),
+                content: '',
+                photos: [],
+                templateId: existingPage.template_id || 'custom',
+                sortOrder: pageData.sortOrder !== undefined ? pageData.sortOrder : Number(existingPage.sort_order),
+                elements: finalElements,
+                background: finalBackground,
+                thumbnail: pageData.thumbnail !== undefined ? pageData.thumbnail : existingPage.thumbnail
+            };
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+    //#endregion
+
+    /**
+     * 更新书籍缩略图派生资源
+     */
+    async updateThumbnail(id: string, coverUrl: string, coverOssKey: string, userId: string): Promise<void> {
+        const [result] = await pool.query<ResultSetHeader>(
+            'UPDATE books SET cover_url = ?, cover_oss_key = ? WHERE id = ? AND user_id = ?',
+            [coverUrl, coverOssKey, id, userId]
+        );
+        if (result.affectedRows === 0) {
+            throw new Error('未发现书籍或无权操作');
         }
     }
 
@@ -769,7 +915,7 @@ export class BookService {
      */
     async getDeletedBooks(userId: string): Promise<(Book & { deletedAt: number; daysRemaining: number })[]> {
         const [rows] = await pool.query<RowDataPacket[]>(
-            `SELECT id, title, author, theme, page_size, created_at, deleted_at,
+            `SELECT id, title, author, page_size, created_at, deleted_at,
              DATEDIFF(DATE_ADD(deleted_at, INTERVAL 30 DAY), NOW()) as days_remaining
              FROM books 
              WHERE user_id = ? AND deleted_at IS NOT NULL 
@@ -782,7 +928,6 @@ export class BookService {
             userId: row.user_id,
             title: row.title,
             author: row.author || '',
-            theme: row.theme as ThemeType,
             pageSize: row.page_size as PageSize,
             createdAt: Number(row.created_at),
             pages: [],
@@ -843,7 +988,7 @@ export class BookService {
         let safeToDeleteKeys: string[] = [];
         if (keysToDelete.length > 0) {
             const [assetsWithKeys] = await pool.query<RowDataPacket[]>(
-                'SELECT oss_key FROM assets WHERE oss_key IN (?)',
+                'SELECT oss_key FROM user_assets WHERE oss_key IN (?)',
                 [keysToDelete]
             );
             const keysInAssets = new Set(assetsWithKeys.map(row => row.oss_key));
@@ -909,7 +1054,7 @@ export class BookService {
 
         let query = `
             SELECT 
-                b.id, b.user_id, b.title, b.author, b.theme, b.page_size, b.cover_url, b.cover_oss_key, b.show_preface, b.is_public, b.status, b.category, b.created_at,
+                b.id, b.user_id, b.title, b.author, b.page_size, b.cover_url, b.cover_oss_key, b.is_public, b.status, b.category, b.created_at, b.updated_at,
                 COALESCE(v.metric_value, 0) as views,
                 COALESCE(l.metric_value, 0) as likes,
                 COALESCE(f.metric_value, 0) as favorites,
@@ -965,16 +1110,15 @@ export class BookService {
                 userId: row.user_id,
                 title: row.title,
                 author: row.author || '',
-                theme: row.theme as ThemeType,
                 pageSize: row.page_size as PageSize,
                 coverUrl: coverUrl || '',
                 coverThumbnailUrl: coverThumbnailUrl || '',
                 coverOssKey: row.cover_oss_key,
-                showPreface: row.show_preface !== undefined ? Boolean(row.show_preface) : true,
                 isPublic: Boolean(row.is_public),
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
+                updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
                 pages: [],
                 views: row.views,
                 likes: row.likes,
@@ -1004,7 +1148,7 @@ export class BookService {
         // 获取当前用户拥有或公开的书模板
         const [rows] = await pool.query<RowDataPacket[]>(
             `SELECT 
-                b.id, b.user_id, b.title, b.author, b.type, b.theme, b.page_size, b.cover_url, b.cover_oss_key, b.show_preface, b.is_public, b.status, b.category, b.created_at,
+                b.id, b.user_id, b.title, b.author, b.type, b.page_size, b.cover_url, b.cover_oss_key, b.is_public, b.status, b.category, b.created_at, b.updated_at,
                 COALESCE(v.metric_value, 0) as views,
                 COALESCE(l.metric_value, 0) as likes,
                 COALESCE(f.metric_value, 0) as favorites,
@@ -1040,16 +1184,15 @@ export class BookService {
                 title: row.title,
                 author: row.author || '',
                 type: row.type as 'book' | 'template',
-                theme: row.theme as ThemeType,
                 pageSize: row.page_size as PageSize,
                 coverUrl: coverUrl || '',
                 coverThumbnailUrl: coverThumbnailUrl || '',
                 coverOssKey: row.cover_oss_key,
-                showPreface: row.show_preface !== undefined ? Boolean(row.show_preface) : true,
                 isPublic: Boolean(row.is_public),
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
+                updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
                 pages: [],
                 views: row.views,
                 likes: row.likes,
@@ -1078,7 +1221,7 @@ export class BookService {
 
         let query = `
             SELECT 
-                b.id, b.user_id, b.title, b.author, b.type, b.theme, b.page_size, b.cover_url, b.cover_oss_key, b.show_preface, b.is_public, b.status, b.category, b.created_at,
+                b.id, b.user_id, b.title, b.author, b.type, b.page_size, b.cover_url, b.cover_oss_key, b.is_public, b.status, b.category, b.created_at, b.updated_at,
                 COALESCE(v.metric_value, 0) as views,
                 COALESCE(l.metric_value, 0) as likes,
                 COALESCE(f.metric_value, 0) as favorites,
@@ -1142,16 +1285,15 @@ export class BookService {
                 title: row.title,
                 author: row.author || '',
                 type: row.type as 'book' | 'template',
-                theme: row.theme as ThemeType,
                 pageSize: row.page_size as PageSize,
                 coverUrl: coverUrl || '',
                 coverThumbnailUrl: coverThumbnailUrl || '',
                 coverOssKey: row.cover_oss_key,
-                showPreface: row.show_preface !== undefined ? Boolean(row.show_preface) : true,
                 isPublic: Boolean(row.is_public),
                 status: row.status,
                 category: row.category || undefined,
                 createdAt: Number(row.created_at),
+                updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : undefined,
                 pages: [],
                 views: row.views,
                 likes: row.likes,
@@ -1193,14 +1335,69 @@ export class BookService {
 
             // 生成新书 ID
             const newBookId = uuidv4();
+            const newCoverId = uuidv4();
             const newType = makeTemplate ? 'template' : 'book';
-            const newStatus = makeTemplate ? 'published' : 'private'; // 模板默认发布，普通书默认私有
+            const newStatus = makeTemplate ? 'published' : 'private';
             const newIsPublic = makeTemplate ? 1 : 0;
 
-            // 2. 插入新书籍记录
+            // 2. 拷贝封面数据
+            if (srcBook.cover_id) {
+                const [covers] = await connection.query<RowDataPacket[]>(
+                    'SELECT * FROM book_covers WHERE id = ?',
+                    [srcBook.cover_id]
+                );
+                if (covers.length > 0) {
+                    const srcCover = covers[0];
+                    let frontElements = srcCover.front_elements ? (typeof srcCover.front_elements === 'string' ? JSON.parse(srcCover.front_elements) : srcCover.front_elements) : {};
+                    let backElements = srcCover.back_elements ? (typeof srcCover.back_elements === 'string' ? JSON.parse(srcCover.back_elements) : srcCover.back_elements) : {};
+
+                    // 非模板复制模式下（如套用模板为新书，或者复制书籍）- 重新生成元素 UUID，防冲突
+                    if (!makeTemplate) {
+                        const regenerateIds = (elements: any) => {
+                            if (elements && Array.isArray(elements.elements)) {
+                                const idMapping = new Map<string, string>();
+                                elements.elements.forEach((el: any) => {
+                                    const newElId = uuidv4();
+                                    idMapping.set(el.id, newElId);
+                                    el.id = newElId;
+                                });
+                                elements.elements.forEach((el: any) => {
+                                    if (el.groupId && idMapping.has(el.groupId)) {
+                                        el.groupId = idMapping.get(el.groupId);
+                                    }
+                                });
+                            }
+                        };
+                        regenerateIds(frontElements);
+                        regenerateIds(backElements);
+                    }
+
+                    await connection.query(
+                        `INSERT INTO book_covers (id, book_id, front_elements, back_elements, front_thumbnail, back_thumbnail, version) 
+                         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+                        [
+                            newCoverId,
+                            newBookId,
+                            JSON.stringify(frontElements),
+                            JSON.stringify(backElements),
+                            srcCover.front_thumbnail || null,
+                            srcCover.back_thumbnail || null
+                        ]
+                    );
+                }
+            } else {
+                // 如果源书没有 cover_id，创建一个空白的
+                await connection.query(
+                    `INSERT INTO book_covers (id, book_id, front_elements, back_elements, front_thumbnail, back_thumbnail, version) 
+                     VALUES (?, ?, '{"version":"2.0","elements":[]}', '{"version":"2.0","elements":[]}', NULL, NULL, 1)`,
+                    [newCoverId, newBookId]
+                );
+            }
+
+            // 3. 插入新书籍记录，记录模板来源
             await connection.query(
                 `INSERT INTO books 
-                 (id, user_id, title, author, type, theme, page_size, cover_url, cover_oss_key, preface, show_preface, is_public, status, category, created_at) 
+                 (id, user_id, title, author, type, page_size, cover_url, cover_oss_key, is_public, status, category, cover_id, created_at, template_origin_type, template_origin_id) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     newBookId,
@@ -1208,20 +1405,27 @@ export class BookService {
                     newTitle,
                     srcBook.author || '',
                     newType,
-                    srcBook.theme,
                     srcBook.page_size,
                     srcBook.cover_url || null,
                     srcBook.cover_oss_key || null,
-                    makeTemplate ? null : (srcBook.preface || null), // 模板不保留源书的自定义前言文字
-                    srcBook.show_preface,
                     newIsPublic,
                     newStatus,
                     srcBook.category || null,
-                    Date.now()
+                    newCoverId,
+                    Date.now(),
+                    'BOOK',
+                    sourceBookId
                 ]
             );
 
-            // 3. 获取所有源页面
+            if (!makeTemplate && srcBook.type === 'template') {
+                await connection.query(
+                    'UPDATE books SET use_count = use_count + 1 WHERE id = ?',
+                    [sourceBookId]
+                );
+            }
+
+            // 4. 获取并克隆所有源页面（内页）
             const [srcPages] = await connection.query<RowDataPacket[]>(
                 'SELECT * FROM pages WHERE book_id = ? ORDER BY sort_order',
                 [sourceBookId]
@@ -1239,53 +1443,14 @@ export class BookService {
                     }
                 }
 
-                if (makeTemplate) {
-                    // 模板模式下，对内容数据进行脱敏与净化
-                    if (elements.version === '2.0') {
-                        // V2.0 页面净化
-                        if (elements.elements && Array.isArray(elements.elements)) {
-                            elements.elements = elements.elements.map((el: any) => {
-                                const cloneEl = { ...el };
-                                if (cloneEl.type === 'photo-frame') {
-                                    cloneEl.photo = null;
-                                } else if (cloneEl.type === 'text') {
-                                    cloneEl.textConfig = {
-                                        ...cloneEl.textConfig,
-                                        content: getPlaceholderByRole(cloneEl.role)
-                                    };
-                                }
-                                return cloneEl;
-                            });
-                        }
-                        if (elements.background) {
-                            if (!elements.background.isSystemTheme) {
-                                delete elements.background.backgroundImage;
-                            }
-                        }
-                    } else {
-                        // V1.0 页面净化
-                        if (elements.slots) {
-                            for (const key of Object.keys(elements.slots)) {
-                                if (elements.slots[key]) {
-                                    elements.slots[key].content = '';
-                                }
-                            }
-                        }
-                        delete elements.backgroundImage;
-                        elements.photos = [];
-                    }
-                } else {
-                    // 非模板复制模式下（如套用模板为新书，或者复制书籍）
-                    // 必须重新生成自由组件元素的 UUID，防止新书与旧书的组件实例 ID 冲突
+                if (!makeTemplate) {
                     if (elements.version === '2.0' && elements.elements && Array.isArray(elements.elements)) {
                         const idMapping = new Map<string, string>();
-                        // 1. 生成新 ID 映射关系
                         elements.elements.forEach((el: any) => {
                             const newElId = uuidv4();
                             idMapping.set(el.id, newElId);
                             el.id = newElId;
                         });
-                        // 2. 依据映射关系重构建组 (groupId) 关联
                         elements.elements.forEach((el: any) => {
                             if (el.groupId && idMapping.has(el.groupId)) {
                                 el.groupId = idMapping.get(el.groupId);
@@ -1295,26 +1460,22 @@ export class BookService {
                 }
 
                 await connection.query(
-                    `INSERT INTO pages (id, book_id, page_title, is_chapter_start, page_type, layout_type, sort_order, elements) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    `INSERT INTO pages (id, book_id, page_title, is_chapter_start, template_id, sort_order, elements, background, thumbnail, template_origin_type, template_origin_id) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         newPageId,
                         newBookId,
                         page.page_title || '',
                         page.is_chapter_start,
-                        page.page_type || 'content',
-                        page.layout_type || 'grid',
+                        page.template_id || 'grid',
                         page.sort_order,
-                        JSON.stringify(elements)
+                        JSON.stringify(elements),
+                        page.background ? (typeof page.background === 'string' ? page.background : JSON.stringify(page.background)) : null,
+                        page.thumbnail || null,
+                        page.template_origin_type || null,
+                        page.template_origin_id || null
                     ]
                 );
-            }
-
-            // 本地辅助函数，用以在模板模式下脱敏占位
-            function getPlaceholderByRole(role?: string): string {
-                if (role === 'chapter-title') return '章节标题';
-                if (role === 'chapter-date') return '2026.06.22';
-                return '双击输入此处的感悟文字...';
             }
 
             await connection.commit();

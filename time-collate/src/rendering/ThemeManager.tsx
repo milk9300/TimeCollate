@@ -1,5 +1,4 @@
 import React, { createContext, useContext, type ReactNode } from 'react';
-import { useBookStore } from '../store';
 
 export type ThemeType = 'classic' | 'modern' | 'warm' | 'magazine';
 
@@ -166,6 +165,33 @@ const THEMES: Record<ThemeType, ThemeConfig> = {
 };
 // #endregion
 
+export const BUILTIN_THEMES = [
+    {
+        id: 'classic',
+        name: '经典雅致',
+        creatorId: 'system',
+        themeSchema: THEMES.classic
+    },
+    {
+        id: 'modern',
+        name: '现代简约',
+        creatorId: 'system',
+        themeSchema: THEMES.modern
+    },
+    {
+        id: 'warm',
+        name: '温馨时光',
+        creatorId: 'system',
+        themeSchema: THEMES.warm
+    },
+    {
+        id: 'magazine',
+        name: '时尚杂志',
+        creatorId: 'system',
+        themeSchema: THEMES.magazine
+    }
+];
+
 // #region Context
 interface ThemeContextType {
     theme: string;
@@ -179,15 +205,6 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export const ThemeProvider: React.FC<{ theme: string; children: ReactNode }> = ({ theme, children }) => {
     // 优先匹配内置主题
     let config = THEMES[theme as ThemeType];
-
-    // 如果未匹配中内置主题，尝试从数据库加载的主题列表中匹配
-    if (!config) {
-        const customThemes = useBookStore.getState().themes || [];
-        const found = customThemes.find(t => t.id === theme);
-        if (found && found.themeSchema) {
-            config = found.themeSchema;
-        }
-    }
 
     // 回退到经典雅致主题
     if (!config) {

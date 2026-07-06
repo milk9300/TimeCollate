@@ -261,6 +261,19 @@ export const ZoomableCanvas = forwardRef<ZoomableCanvasRef, ZoomableCanvasProps>
                 <div 
                     ref={containerRef}
                     className={`relative w-full h-full ${cursorClass}`}
+                    onMouseDown={(e) => {
+                        if (editorMode === 'select') {
+                            const target = e.target as HTMLElement;
+                            // 检测点击的目标元素是否在书页容器外部（例如灰色背景区域）
+                            if (target && !target.closest('.book-page-canvas-wrapper')) {
+                                const store = useBookStore.getState();
+                                store.setSelectedElementIds([]);
+                                store.setActiveTextEdit(null);
+                                store.setActivePhotoEdit(null);
+                                store.setActiveStickerEdit(null);
+                            }
+                        }
+                    }}
                 >
                     <TransformComponent
                         wrapperStyle={{

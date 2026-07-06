@@ -43,7 +43,14 @@ export class FeedbackService {
         const [rows] = await pool.query<RowDataPacket[]>(sql, params);
 
         return rows.map(row => {
-            const images: string[] = JSON.parse(row.images || '[]');
+            let images: string[] = [];
+            if (row.images) {
+                try {
+                    images = typeof row.images === 'string' ? JSON.parse(row.images) : row.images;
+                } catch (e) {
+                    console.error('Failed to parse feedback images:', row.images, e);
+                }
+            }
             return {
                 id: row.id,
                 content: row.content,
@@ -75,7 +82,14 @@ export class FeedbackService {
         if (rows.length === 0) return null;
 
         const row = rows[0];
-        const images: string[] = JSON.parse(row.images || '[]');
+        let images: string[] = [];
+        if (row.images) {
+            try {
+                images = typeof row.images === 'string' ? JSON.parse(row.images) : row.images;
+            } catch (e) {
+                console.error('Failed to parse feedback detail images:', row.images, e);
+            }
+        }
 
         // 核心优化：详情页缩略图集成 OSS 处理，等比缩放至宽度 500px，质量压缩至 80%
         const imageUrls = images.map(key =>

@@ -34,7 +34,7 @@ function validateParams(entityType: string, entityId: string) {
     if (!entityType || !entityId) {
         throw new Error('Missing parameter (entityType, entityId)');
     }
-    if (!['book', 'template', 'theme'].includes(entityType)) {
+    if (!['book', 'template'].includes(entityType)) {
         throw new Error('Invalid entityType');
     }
 }

@@ -25,7 +25,7 @@ export function Sidebar() {
     const navigate = useNavigate();
     const location = useLocation();
     const { user, logout } = useAuthStore();
-    
+
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -66,7 +66,6 @@ export function Sidebar() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // 导航项定义
     const navItems = [
         {
             id: 'books',
@@ -92,12 +91,17 @@ export function Sidebar() {
             icon: Globe,
             onClick: () => navigate('/square')
         }
-    ];
+    ].filter(item => {
+        if (item.id === 'designs') {
+            return user?.role === 'admin' || user?.role === 'designer';
+        }
+        return true;
+    });
 
     return (
         <aside className="w-[72px] h-full bg-white border-r border-slate-100 flex flex-col items-center pt-4 pb-6 shrink-0 font-['Outfit',_sans-serif] select-none z-40">
             {/* 1. Logo 区域 */}
-            <div 
+            <div
                 className="w-10 h-10 mb-3 cursor-pointer group"
                 onClick={() => navigate('/')}
                 title="回到首页"
@@ -128,17 +132,17 @@ export function Sidebar() {
                             key={item.id}
                             onClick={item.onClick}
                             className={`w-14 py-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all duration-300 relative group cursor-pointer
-                                      ${isActive 
-                                        ? 'bg-indigo-50/70 text-indigo-650 font-black' 
-                                        : 'text-slate-400 hover:bg-slate-50/50 hover:text-slate-650 font-bold'}`}
+                                      ${isActive
+                                    ? 'bg-indigo-50/70 text-indigo-650 font-black'
+                                    : 'text-slate-400 hover:bg-slate-50/50 hover:text-slate-650 font-bold'}`}
                         >
-                            <Icon 
-                                size={18} 
-                                className={`${isActive ? 'scale-105 text-indigo-650' : 'group-hover:scale-105 transition-transform'}`} 
+                            <Icon
+                                size={18}
+                                className={`${isActive ? 'scale-105 text-indigo-650' : 'group-hover:scale-105 transition-transform'}`}
                                 strokeWidth={isActive ? 2.5 : 2}
                             />
                             <span className="text-[9px] tracking-tight">{item.label}</span>
-                            
+
                             {isActive && (
                                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-indigo-600 rounded-r-full" />
                             )}
@@ -149,7 +153,7 @@ export function Sidebar() {
 
             {/* 4. 底部固定区 - 导出、通知、头像 */}
             <div className="w-full flex flex-col items-center gap-4 mt-auto">
-                
+
                 {/* 导出任务中心 */}
                 <ExportTasksDropdown align="right" />
 
@@ -177,7 +181,14 @@ export function Sidebar() {
                         >
                             {/* 账号头信息 */}
                             <div className="px-4 py-3 mb-2 border-b border-slate-100/80">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{userName}</p>
+                                <div className="flex justify-between items-center mb-1">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{userName}</p>
+                                    <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded ${user?.role === 'admin' ? 'bg-indigo-100 text-indigo-600' :
+                                            user?.role === 'designer' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                                        }`}>
+                                        {user?.role === 'admin' ? '管理员' : user?.role === 'designer' ? '设计师' : '普通用户'}
+                                    </span>
+                                </div>
                                 <p className="text-xs font-bold text-slate-700 truncate font-mono">@{user?.username || 'user'}</p>
                             </div>
 

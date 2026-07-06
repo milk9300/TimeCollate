@@ -3,7 +3,7 @@ import { RowDataPacket } from 'mysql2/promise';
 import { signAvatarUrl } from './OssService.js';
 
 export type NotificationActionType = 'like' | 'favorite' | 'comment' | 'follow' | 'clone' | 'system';
-export type NotificationEntityType = 'book' | 'template' | 'theme' | 'user' | 'comment' | 'system';
+export type NotificationEntityType = 'book' | 'template' | 'user' | 'comment' | 'system';
 
 export interface Notification {
     id: string;

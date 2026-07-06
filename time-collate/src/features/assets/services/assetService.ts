@@ -53,8 +53,8 @@ export class AssetService {
     /**
      * 获取文件夹树
      */
-    async getFolders(): Promise<MaterialFolder[]> {
-        const response = await axios.get('/assets/folders');
+    async getFolders(scope?: 'user' | 'system' | 'all'): Promise<MaterialFolder[]> {
+        const response = await axios.get('/assets/folders', { params: { scope } });
         return response.data.data;
     }
 
@@ -94,6 +94,7 @@ export class AssetService {
         search?: string;
         page?: number;
         pageSize?: number;
+        scope?: 'user' | 'system' | 'all';
     }): Promise<PaginatedMaterials> {
         const response = await axios.get('/assets/materials', { params });
         return response.data.data;

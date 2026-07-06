@@ -1,6 +1,5 @@
 import type { Chapter, Page, Book } from '../types';
 import { BookCoverLayout } from './layouts/BookCoverLayout';
-import { PrefaceLayout } from './layouts/PrefaceLayout';
 import { BackCoverLayout } from './layouts/BackCoverLayout';
 import { EmptyLayout } from './layouts/EmptyLayout';
 import { DynamicLayoutRenderer } from './DynamicLayoutRenderer';
@@ -14,8 +13,7 @@ interface LayoutProps {
 }
 
 const REGISTRY: Record<string, React.FC<LayoutProps>> = {
-    'book-cover': (props) => props.book ? <BookCoverLayout book={props.book} readOnly={props.readOnly} /> : null,
-    'preface': (props) => <PrefaceLayout book={props.book} content={props.page.content} readOnly={props.readOnly} />,
+    'book-cover': (props) => props.book ? <BookCoverLayout book={props.book} page={props.page} chapter={props.chapter} readOnly={props.readOnly} /> : null,
     'back-cover': (props) => <BackCoverLayout book={props.book} />,
     'empty': () => <EmptyLayout />,
 };

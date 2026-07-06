@@ -343,7 +343,7 @@ export const EditablePhoto: React.FC<EditablePhotoProps> = ({
             data-page-id={pageId}
             className={`${className} relative transition-all ${
                 editorMode === 'select'
-                    ? 'cursor-pointer hover:outline hover:outline-2 hover:outline-[#8b3dff]/40'
+                    ? `cursor-pointer ${!isSelected ? 'hover:outline hover:outline-2 hover:outline-indigo-300' : ''}`
                     : ''
             } ${
                 isDragOver ? 'scale-[0.98] opacity-80' : ''

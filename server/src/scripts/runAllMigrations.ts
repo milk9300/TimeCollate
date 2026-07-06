@@ -16,8 +16,9 @@ const scripts = [
     'migrateBooksType.js',
     'migratePageTemplates.js',
     'migratePagesElements.js',
-    'seedTemplates.js',
-    'seedThemes.js'
+    'migratePagesLayout.js',
+    'migrateCleanup.js',
+    'migrateTemplatesFeatures.js'
 ];
 
 async function runAll() {

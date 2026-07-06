@@ -30,7 +30,7 @@ export const Login: React.FC = () => {
                 role: 'admin',
                 status: 'active'
             };
-            setAuth(user as any, 'local-mock-token');
+            setAuth(user as any, 'local-mock-token', '');
             navigate('/');
             setIsLoading(false);
             return;
@@ -39,8 +39,9 @@ export const Login: React.FC = () => {
         try {
             const response = await axios.post('/auth/login', { username, password });
             if (response.data.success) {
-                const { user, token } = response.data.data;
-                setAuth(user, token);
+                const { user, accessToken, refreshToken, token } = response.data.data;
+                // 优先使用新字段 accessToken，向后兼容 token
+                setAuth(user, accessToken || token, refreshToken || '');
                 navigate('/');
             }
         } catch (err: any) {

@@ -1,11 +1,112 @@
 import { create } from 'zustand';
-import type { Book, Chapter, Page, Photo, Template, BookTheme, CanvasElement, PhotoFrameElement } from '../types';
+import type { Book, BookCover, Document, Chapter, Page, Photo, Template, CanvasElement, PhotoFrameElement } from '../types';
 import { getBookService } from '../services/serviceFactory';
 import { useAuthStore } from './useAuthStore';
 import { DEFAULT_TEMPLATES } from '../rendering/defaultTemplates';
 import axios from 'axios';
 import { debounce } from '../utils/debounce';
 import { migrateBookToVirtualCoords } from '../utils/canvasMigrationAdapter';
+
+// #region Cover Unified Helper Functions
+function buildDefaultCoverPage(title: string, author: string, coverUrl?: string): Page {
+    let backgroundImage: string | undefined = undefined;
+    let backgroundColor: string = '#FAF8E7'; // 棉麻暖白作为默认颜色
+    
+    if (coverUrl && !coverUrl.startsWith('design://')) {
+        backgroundImage = coverUrl;
+    } else if (coverUrl && coverUrl.startsWith('design://')) {
+        try {
+            const queryStr = coverUrl.split('?')[1] || '';
+            const params = new URLSearchParams(queryStr);
+            const image = params.get('image') ? decodeURIComponent(params.get('image')!) : undefined;
+            if (image) {
+                backgroundImage = image;
+            }
+            const bgId = params.get('bg') || 'cotton-white';
+            if (bgId === 'slate-blue') backgroundColor = '#1E293B';
+            else if (bgId === 'forest-green') backgroundColor = '#1A332B';
+            else if (bgId === 'vintage-red') backgroundColor = '#6B1D1D';
+            else backgroundColor = '#FAF8E7';
+        } catch (e) {
+            console.error('Failed to parse coverUrl design protocol', e);
+        }
+    }
+    
+    return {
+        id: crypto.randomUUID(),
+        content: '',
+        photos: [],
+        templateId: 'book-cover',
+        pageType: 'cover',
+        background: {
+            color: backgroundColor,
+            backgroundImage
+        },
+        elements: [
+            {
+                id: crypto.randomUUID(),
+                type: 'text',
+                x: 100,
+                y: 450,
+                width: 800,
+                height: 150,
+                rotate: 0,
+                zIndex: 10,
+                role: 'cover-title',
+                textConfig: {
+                    content: title || '我的时光集',
+                    fontFamily: 'inherit',
+                    fontSize: '28pt',
+                    fontWeight: 'bold',
+                    color: '#3A2E2B',
+                    textAlign: 'center'
+                }
+            },
+            {
+                id: crypto.randomUUID(),
+                type: 'text',
+                x: 200,
+                y: 650,
+                width: 600,
+                height: 80,
+                rotate: 0,
+                zIndex: 9,
+                role: 'cover-author',
+                textConfig: {
+                    content: author || '时光记录者',
+                    fontFamily: 'inherit',
+                    fontSize: '14pt',
+                    color: '#8C7A76',
+                    textAlign: 'center'
+                }
+            }
+        ]
+    };
+}
+
+function ensureCoverPageInPages(book: Book): Book {
+    if (!book.pages) {
+        book.pages = [];
+    }
+    
+    // 1. 扫描并自动纠正具有 'book-cover' templateId 页面的 pageType
+    book.pages.forEach(p => {
+        if (p.templateId === 'book-cover') {
+            p.pageType = 'cover';
+        }
+    });
+
+    const hasCover = book.pages.some(p => p.pageType === 'cover');
+    if (!hasCover) {
+        const coverPage = buildDefaultCoverPage(book.title, book.author, book.coverUrl);
+        book.pages = [coverPage, ...book.pages];
+    }
+    if ((book as any).coverPage) {
+        delete (book as any).coverPage;
+    }
+    return book;
+}
+// #endregion
 
 // 获取 Service 单例（内部根据环境变量切换 Local/Cloud）
 const bookService = getBookService();
@@ -51,7 +152,7 @@ async function saveTemplateFromVirtualBook(book: Book) {
                 pages: [{
                     ...page,
                     id: `temp-page-${newTplId}`,
-                    layout: newTplId
+                    templateId: newTplId
                 }]
             };
             useBookStore.setState({ currentBook: newBook });
@@ -59,17 +160,27 @@ async function saveTemplateFromVirtualBook(book: Book) {
     }
 }
 
-// 全局防抖保存执行器，提取为模块级作用域
-const debouncedSaveFn = debounce(async (book: Book, onSaveSuccess: () => void, onSaveError: () => void) => {
+// 全局防抖保存执行器，只针对单个被修改的 Document 进行局部更新
+const debouncedSaveDocFn = debounce(async (doc: Document, bookId: string, onSaveSuccess: () => void, onSaveError: () => void) => {
     try {
-        if (book.type === 'template' || book.id.startsWith('temp-book-')) {
-            await saveTemplateFromVirtualBook(book);
+        if (doc.type === 'cover') {
+            await bookService.saveCover(bookId, {
+                frontElements: doc.elements,
+                frontBackground: doc.background,
+                backBackground: doc.background,
+                frontThumbnail: doc.thumbnail
+            });
         } else {
-            await bookService.saveBook(book);
+            await bookService.savePage(doc.id, {
+                elements: doc.elements,
+                background: doc.background,
+                thumbnail: doc.thumbnail,
+                pageTitle: doc.title
+            });
         }
         onSaveSuccess();
     } catch (e) {
-        console.error('Failed to save book state (debounced)', e);
+        console.error('Failed to save document (debounced)', e);
         onSaveError();
     }
 }, 1000);
@@ -77,46 +188,60 @@ const debouncedSaveFn = debounce(async (book: Book, onSaveSuccess: () => void, o
 interface BookState {
     // Data
     currentBook: Book | null;
+    cover: BookCover | null;
+    documents: Document[];
+    activeDocumentId: string;
     isLoading: boolean;
     error: string | null;
     saveStatus: 'saved' | 'saving' | 'error'; // 新增：云同步保存状态
+    thumbnailStatus: 'READY' | 'PENDING' | 'FAILED' | 'NOT_GENERATED'; // 新增：缩略图生成状态
     uploadingJobs: Record<string, { name: string; progress: number; status: 'uploading' | 'success' | 'error' }>; // 新增：全局直传任务管理
     editorMode: 'select' | 'hand'; // 编辑器操作模式
     editorScope: 'cover' | 'chapters'; // 当前处于“书封扉页”还是“正文章节”大模态
-    activeFrontPage: 'cover' | 'preface'; // 书封扉页大模式下，当前编辑的页面
-    historyPast: Book[];          // 历史状态栈（过去）
-    historyFuture: Book[];        // 历史状态栈（未来）
+    activeFrontPage: 'cover' | 'backCover'; // 书封扉页大模式下，当前编辑的页面
+    historyPast: Document[][];          // 历史状态栈（过去）
+    historyFuture: Document[][];        // 历史状态栈（未来）
     activePhotoEdit: { chapterId: string, pageId: string, photoId: string } | null; // 当前正在被编辑微调的图片
     activeTextEdit: { chapterId: string, pageId: string, slotId: string } | null; // 当前正在被编辑微调的文本槽位
     activeStickerEdit: { chapterId: string, pageId: string, stickerId: string } | null; // 当前正在被编辑微调的贴纸
+    selectedElementIds: string[]; // Canva 风格自由画布当前选中的元素 ID 列表
     alignLines: { type: 'v' | 'h'; val: number }[]; // 智能对齐吸附参考线
     templates: Template[];        // 动态加载的排版模板库
-    themes: BookTheme[];          // 动态加载的主题库
+    interactionStartDocs: Document[] | null; // 交互开始前的画布文档状态备份
+
+    // 双轨制 Command 撤销栈 Feature Flag
+    enableCommandHistory: boolean; // 是否启用新 Command 原子撤销栈（替代大快照）
+    commandCanUndo: boolean;       // 底层 Command 栈是否可撤销
+    commandCanRedo: boolean;       // 底层 Command 栈是否可重做
 
     // UI Drawer States
-    rightActiveTab: 'templates' | 'photos' | 'decorations' | 'global' | 'inspector' | null;
+    rightActiveTab: 'templates' | 'photos' | 'text' | 'decorations' | 'global' | 'inspector' | null;
     isDrawerOpen: boolean;
     activeInspectorSection: 'edit' | 'crop' | 'frame' | 'font' | 'color' | 'position' | 'sticker-adjust' | null;
 
     // Mode Actions
     setEditorMode: (mode: 'select' | 'hand') => void;
     setEditorScope: (scope: 'cover' | 'chapters') => void;
-    setActiveFrontPage: (page: 'cover' | 'preface') => void;
+    setActiveFrontPage: (page: 'cover' | 'backCover') => void;
     setActivePhotoEdit: (edit: { chapterId: string, pageId: string, photoId: string } | null) => void;
     setActiveTextEdit: (edit: { chapterId: string, pageId: string, slotId: string } | null) => void;
     setActiveStickerEdit: (edit: { chapterId: string, pageId: string, stickerId: string } | null) => void; // 新增：设置贴纸编辑状态
+    setSelectedElementIds: (ids: string[]) => void; // 设置选中的元素 ID
+    commitPageElements: (chapterId: string, pageId: string, elements: CanvasElement[]) => Promise<void>; // 低频提交更新入历史栈
+    updatePageElementsLocal: (chapterId: string, pageId: string, elements: CanvasElement[]) => void; // 交互高频更新，不进历史栈
     
     // UI Drawer Actions
-    setRightActiveTab: (tab: 'templates' | 'photos' | 'decorations' | 'global' | 'inspector' | null) => void;
+    setRightActiveTab: (tab: 'templates' | 'photos' | 'text' | 'decorations' | 'global' | 'inspector' | null) => void;
     setIsDrawerOpen: (open: boolean) => void;
     setActiveInspectorSection: (section: 'edit' | 'crop' | 'frame' | 'font' | 'color' | 'position' | 'sticker-adjust' | null) => void;
     
     loadTemplates: () => Promise<void>; // 加载动态排版模板列表
-    loadThemes: () => Promise<void>;    // 加载动态主题列表
 
     // History Actions
     undo: () => Promise<void>;
     redo: () => Promise<void>;
+    setEnableCommandHistory: (enabled: boolean) => void;
+    setCommandHistoryState: (canUndo: boolean, canRedo: boolean) => void;
 
     // Book Actions
     loadBook: (id: string) => Promise<void>;
@@ -161,6 +286,7 @@ interface BookState {
     exportBook: (type: 'pdf' | 'markdown') => Promise<void>;
 
     // 新增：自动保存与上传动作
+    debouncedSave: () => void;
     triggerSaveBook: () => Promise<void>;
     flushSaveBook: () => void;
     updateUploadJob: (id: string, name: string, progress: number, status?: 'uploading' | 'success' | 'error') => void;
@@ -172,9 +298,13 @@ export function getVirtualChapters(pages: Page[]): Chapter[] {
     const chapters: Chapter[] = [];
     if (!pages || pages.length === 0) return chapters;
 
+    // 过滤掉封面页，仅对正文页进行章节拆分
+    const contentPages = pages.filter(p => p.pageType !== 'cover');
+    if (contentPages.length === 0) return chapters;
+
     let currentChapter: Chapter | null = null;
 
-    for (const page of pages) {
+    for (const page of contentPages) {
         if (page.isChapterStart || !currentChapter) {
             currentChapter = {
                 id: page.id, // 章节 ID 对应其第一页的 ID
@@ -190,9 +320,14 @@ export function getVirtualChapters(pages: Page[]): Chapter[] {
     return chapters;
 }
 
-export function flattenChapters(chapters: Chapter[], bookId: string): Page[] {
+export function flattenChapters(chapters: Chapter[], bookId: string, originalPages: Page[] = []): Page[] {
     const pages: Page[] = [];
-    let sortOrder = 0;
+    
+    // 1. 提取并保留已有的封面页
+    const coverPages = (originalPages || []).filter(p => p.pageType === 'cover');
+    pages.push(...coverPages);
+
+    let sortOrder = coverPages.length;
     for (const chapter of chapters) {
         for (let i = 0; i < chapter.pages.length; i++) {
             const page = chapter.pages[i];
@@ -210,39 +345,150 @@ export function flattenChapters(chapters: Chapter[], bookId: string): Page[] {
 // #endregion
 
 export const useBookStore = create<BookState>((set, get) => {
-    // 内部帮助函数：深拷贝并推送当前状态到撤销栈，保存新状态
-    const saveStateAndHistory = async (updatedBook: Book, skipHistoryPush: boolean = false, immediate: boolean = false) => {
-        const { currentBook, historyPast } = get();
+    // 异步生成并上传书籍当前被激活文档的缩略图
+    const triggerAsyncThumbnailUpdate = async (bookId: string) => {
+        const { activeDocumentId } = get();
+        console.log('📷 [Thumbnail] triggerAsyncThumbnailUpdate triggered for bookId:', bookId, 'activeDocumentId:', activeDocumentId);
         
-        let newPast = historyPast;
-        if (!skipHistoryPush && currentBook) {
-            newPast = [...historyPast.slice(-49), JSON.parse(JSON.stringify(currentBook))];
+        const isCover = activeDocumentId === 'cover';
+        const elementId = isCover ? 'book-cover-page-capture-container' : 'editor-active-page-canvas';
+        const element = document.getElementById(elementId);
+        console.log(`📷 [Thumbnail] DOM Element #${elementId} found:`, !!element);
+        if (!element) {
+            console.log('📷 [Thumbnail] Capture element not found in DOM, aborting.');
+            return;
         }
 
+        set({ thumbnailStatus: 'PENDING' });
+        try {
+            console.log('📷 [Thumbnail] Importing coverCaptureHelper dynamically...');
+            const { captureCoverToBlob, uploadCoverThumbnail } = await import('../utils/coverCaptureHelper');
+            console.log('📷 [Thumbnail] Running DOM captureCoverToBlob...');
+            const blob = await captureCoverToBlob(element);
+            console.log('📷 [Thumbnail] Blob generation finished. Success:', !!blob);
+            if (!blob) {
+                set({ thumbnailStatus: 'FAILED' });
+                return;
+            }
+
+            console.log('📷 [Thumbnail] Uploading thumbnail to OSS...');
+            const uploadResult = await uploadCoverThumbnail(bookId, blob);
+            console.log('📷 [Thumbnail] Upload result from OSS:', uploadResult);
+            if (!uploadResult) {
+                set({ thumbnailStatus: 'FAILED' });
+                return;
+            }
+
+            // 更新云端数据
+            if (isCover) {
+                await bookService.saveCover(bookId, { frontThumbnail: uploadResult.url });
+            } else {
+                await bookService.savePage(activeDocumentId, { thumbnail: uploadResult.url });
+            }
+            console.log('📷 [Thumbnail] PATCH update to backend success!');
+
+            // 同步更新本地状态中的 thumbnail 属性
+            const { documents, cover } = get();
+            const nextDocs = documents.map(d =>
+                d.id === activeDocumentId ? { ...d, thumbnail: uploadResult.url } : d
+            );
+            
+            let nextCover = cover;
+            if (isCover && cover) {
+                nextCover = { ...cover, frontThumbnail: uploadResult.url };
+            }
+
+            set({
+                documents: nextDocs,
+                cover: nextCover,
+                thumbnailStatus: 'READY'
+            });
+            console.log('📷 [Thumbnail] Zustand store thumbnail state synced successfully!');
+        } catch (error) {
+            console.error('📷 [Thumbnail] Failed to trigger async thumbnail update with error:', error);
+            set({ thumbnailStatus: 'FAILED' });
+        }
+    };
+
+    // 内部帮助函数：深拷贝并推送当前状态到撤销栈，保存新状态 (按页/按封面增量写时复制)
+    const saveStateAndHistory = async (
+        updatedDocs: Document[], 
+        skipHistoryPush: boolean = false, 
+        immediate: boolean = false,
+        keepFuture: boolean = false
+    ) => {
+        const { documents, historyPast, historyFuture, currentBook } = get();
+        if (!currentBook) return;
+        
+        let newPast = historyPast;
+        const isCommandMode = get().enableCommandHistory;
+        if (!skipHistoryPush && !isCommandMode) {
+            // 浅拷贝 documents 数组，只深拷贝当前正在编辑的 activeDocument，大幅节省内存
+            const snapshot = documents.map(d => 
+                d.id === get().activeDocumentId ? JSON.parse(JSON.stringify(d)) : d
+            );
+            newPast = [...historyPast.slice(-49), snapshot];
+        }
+
+        const nextPages = updatedDocs
+            .filter(d => d.type === 'page')
+            .map((d, idx) => ({
+                id: d.id,
+                pageTitle: d.title,
+                isChapterStart: d.isChapterStart,
+                templateId: d.templateId || 'custom',
+                elements: d.elements,
+                background: d.background,
+                thumbnail: d.thumbnail,
+                sortOrder: idx,
+                content: '',
+                photos: []
+            }));
+
         set({
-            currentBook: updatedBook,
+            documents: updatedDocs,
+            currentBook: { ...currentBook, pages: nextPages },
             historyPast: newPast,
-            historyFuture: [], // 产生新改变时清空 redo 栈
+            historyFuture: keepFuture ? historyFuture : [], // 只有在 keepFuture 为 true 时保留，常规修改一律清空
             saveStatus: 'saving'
         });
 
+        // 局部防抖/即时保存被更新的 Document
+        const activeDoc = updatedDocs.find(d => d.id === get().activeDocumentId);
+        if (!activeDoc) return;
+
         if (immediate) {
-            debouncedSaveFn.cancel();
+            debouncedSaveDocFn.cancel();
             try {
-                if (updatedBook.type === 'template' || updatedBook.id.startsWith('temp-book-')) {
-                    await saveTemplateFromVirtualBook(updatedBook);
+                if (activeDoc.type === 'cover') {
+                    await bookService.saveCover(currentBook.id, {
+                        frontElements: activeDoc.elements,
+                        frontBackground: activeDoc.background,
+                        backBackground: activeDoc.background,
+                        frontThumbnail: activeDoc.thumbnail
+                    });
                 } else {
-                    await bookService.saveBook(updatedBook);
+                    await bookService.savePage(activeDoc.id, {
+                        elements: activeDoc.elements,
+                        background: activeDoc.background,
+                        thumbnail: activeDoc.thumbnail,
+                        pageTitle: activeDoc.title
+                    });
                 }
                 set({ saveStatus: 'saved' });
+                triggerAsyncThumbnailUpdate(currentBook.id);
             } catch (e) {
-                console.error('Failed to save book state immediately', e);
+                console.error('Failed to save document immediately', e);
                 set({ saveStatus: 'error' });
             }
         } else {
-            debouncedSaveFn(
-                updatedBook,
-                () => set({ saveStatus: 'saved' }),
+            debouncedSaveDocFn(
+                activeDoc,
+                currentBook.id,
+                () => {
+                    set({ saveStatus: 'saved' });
+                    triggerAsyncThumbnailUpdate(currentBook.id);
+                },
                 () => set({ saveStatus: 'error' })
             );
         }
@@ -250,9 +496,13 @@ export const useBookStore = create<BookState>((set, get) => {
 
     return {
         currentBook: null,
+        cover: null,
+        documents: [],
+        activeDocumentId: '',
         isLoading: false,
         error: null,
         saveStatus: 'saved',
+        thumbnailStatus: 'NOT_GENERATED',
         uploadingJobs: {},
         editorMode: 'select',
         editorScope: 'chapters',
@@ -262,9 +512,13 @@ export const useBookStore = create<BookState>((set, get) => {
         activePhotoEdit: null,
         activeTextEdit: null,
         activeStickerEdit: null, // 新增贴纸编辑状态初始值
+        selectedElementIds: [], // Canva 风格自由画布当前选中的元素 ID 列表
         alignLines: [], // 智能对齐吸附参考线初始值
-        templates: DEFAULT_TEMPLATES,
-        themes: [],
+        templates: [],
+        interactionStartDocs: null,
+        enableCommandHistory: false,
+        commandCanUndo: false,
+        commandCanRedo: false,
 
         // UI Drawer Initial values
         rightActiveTab: null,
@@ -276,20 +530,35 @@ export const useBookStore = create<BookState>((set, get) => {
         },
 
         setEditorScope: (scope) => {
+            const { documents, activeDocumentId } = get();
+            let nextActiveId = activeDocumentId;
+            if (scope === 'cover') {
+                nextActiveId = 'cover';
+            } else if (scope === 'chapters') {
+                const isCurrentPage = documents.some(d => d.id === activeDocumentId && d.type === 'page');
+                if (!isCurrentPage) {
+                    const firstPage = documents.find(d => d.type === 'page');
+                    nextActiveId = firstPage ? firstPage.id : '';
+                }
+            }
+
             set({
                 editorScope: scope,
+                activeDocumentId: nextActiveId,
                 activePhotoEdit: null,
                 activeTextEdit: null,
-                activeStickerEdit: null
+                activeStickerEdit: null,
+                selectedElementIds: []
             });
         },
 
-        setActiveFrontPage: (page) => {
+        setActiveFrontPage: (page: 'cover' | 'backCover') => {
             set({
                 activeFrontPage: page,
                 activePhotoEdit: null,
                 activeTextEdit: null,
-                activeStickerEdit: null
+                activeStickerEdit: null,
+                selectedElementIds: []
             });
         },
 
@@ -298,7 +567,12 @@ export const useBookStore = create<BookState>((set, get) => {
             const photoSections = ['edit', 'crop', 'frame', 'position'];
             const isCompatible = currentSection && photoSections.includes(currentSection);
             
-            set({ activePhotoEdit: edit });
+            set({
+                activePhotoEdit: edit,
+                selectedElementIds: edit 
+                    ? [edit.photoId] 
+                    : (get().selectedElementIds.includes('page-background') ? ['page-background'] : [])
+            });
             if (edit) {
                 set({
                     activeTextEdit: null,
@@ -318,7 +592,12 @@ export const useBookStore = create<BookState>((set, get) => {
             const textSections = ['font', 'color', 'position'];
             const isCompatible = currentSection && textSections.includes(currentSection);
 
-            set({ activeTextEdit: edit });
+            set({
+                activeTextEdit: edit,
+                selectedElementIds: edit 
+                    ? [edit.slotId] 
+                    : (get().selectedElementIds.includes('page-background') ? ['page-background'] : [])
+            });
             if (edit) {
                 set({
                     activePhotoEdit: null,
@@ -338,7 +617,12 @@ export const useBookStore = create<BookState>((set, get) => {
             const stickerSections = ['sticker-adjust', 'position'];
             const isCompatible = currentSection && stickerSections.includes(currentSection);
 
-            set({ activeStickerEdit: edit });
+            set({
+                activeStickerEdit: edit,
+                selectedElementIds: edit 
+                    ? [edit.stickerId] 
+                    : (get().selectedElementIds.includes('page-background') ? ['page-background'] : [])
+            });
             if (edit) {
                 set({
                     activePhotoEdit: null,
@@ -351,6 +635,102 @@ export const useBookStore = create<BookState>((set, get) => {
                     set({ rightActiveTab: null, isDrawerOpen: false, activeInspectorSection: null });
                 }
             }
+        },
+
+        setSelectedElementIds: (ids) => {
+            set({ selectedElementIds: ids });
+            if (ids.length === 1) {
+                const targetId = ids[0];
+                const { documents } = get();
+                
+                let foundElement: CanvasElement | null = null;
+                let foundDocId = '';
+                
+                for (const doc of documents) {
+                    if (doc.elements) {
+                        const el = doc.elements.find(e => e.id === targetId);
+                        if (el) {
+                            foundElement = el;
+                            foundDocId = doc.id;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundElement) {
+                    if (foundElement.type === 'photo-frame') {
+                        set({
+                            activePhotoEdit: { chapterId: '', pageId: foundDocId, photoId: foundElement.id },
+                            activeTextEdit: null,
+                            activeStickerEdit: null,
+                            activeInspectorSection: 'edit'
+                        });
+                    } else if (foundElement.type === 'text') {
+                        set({
+                            activeTextEdit: { chapterId: '', pageId: foundDocId, slotId: foundElement.id },
+                            activePhotoEdit: null,
+                            activeStickerEdit: null,
+                            activeInspectorSection: 'font'
+                        });
+                    } else if (foundElement.type === 'sticker') {
+                        set({
+                            activeStickerEdit: { chapterId: '', pageId: foundDocId, stickerId: foundElement.id },
+                            activePhotoEdit: null,
+                            activeTextEdit: null,
+                            activeInspectorSection: 'sticker-adjust'
+                        });
+                    }
+                    return;
+                }
+            }
+            
+            // 多选或没选中
+            set({
+                activePhotoEdit: null,
+                activeTextEdit: null,
+                activeStickerEdit: null
+            });
+        },
+
+        commitPageElements: async (chapterId, pageId, elements) => {
+            const { documents, interactionStartDocs, historyPast } = get();
+
+            const nextDocs = documents.map(d =>
+                d.id === pageId ? { ...d, elements } : d
+            );
+
+            const docsToPush = interactionStartDocs || documents;
+            const snapshot = docsToPush.map(d => 
+                d.id === pageId ? JSON.parse(JSON.stringify(d)) : d
+            );
+            const newPast = [...historyPast.slice(-49), snapshot];
+
+            set({
+                historyPast: newPast,
+                interactionStartDocs: null
+            });
+
+            await saveStateAndHistory(nextDocs, true);
+        },
+
+        updatePageElementsLocal: (chapterId, pageId, elements) => {
+            const { documents, interactionStartDocs } = get();
+
+            let nextInteractionStartDocs = interactionStartDocs;
+            if (!interactionStartDocs) {
+                nextInteractionStartDocs = documents.map(d => 
+                    d.id === pageId ? JSON.parse(JSON.stringify(d)) : d
+                );
+            }
+
+            const nextDocs = documents.map(d =>
+                d.id === pageId ? { ...d, elements } : d
+            );
+
+            set({
+                documents: nextDocs,
+                interactionStartDocs: nextInteractionStartDocs
+            });
         },
 
         setRightActiveTab: (tab) => {
@@ -370,81 +750,121 @@ export const useBookStore = create<BookState>((set, get) => {
                 const response = await axios.get('/templates');
                 if (response.data && response.data.success) {
                     const backendTemplates = response.data.data as Template[];
-                    const mergedTemplates = [...DEFAULT_TEMPLATES];
-                    backendTemplates.forEach(bt => {
-                        const idx = mergedTemplates.findIndex(t => t.id === bt.id);
-                        if (idx >= 0) {
-                            mergedTemplates[idx] = bt;
-                        } else {
-                            mergedTemplates.push(bt);
-                        }
-                    });
-                    set({ templates: mergedTemplates });
+                    set({ templates: backendTemplates });
                 }
             } catch (e) {
-                console.error('Failed to load templates, using local default templates fallback', e);
-                set({ templates: DEFAULT_TEMPLATES });
-            }
-        },
-
-        loadThemes: async () => {
-            try {
-                const response = await axios.get('/themes');
-                if (response.data && response.data.success) {
-                    set({ themes: response.data.data });
-                }
-            } catch (e) {
-                console.error('Failed to load themes', e);
+                console.error('Failed to load templates from database', e);
+                set({ templates: [] });
             }
         },
 
         undo: async () => {
-            const { historyPast, historyFuture, currentBook } = get();
-            if (historyPast.length === 0 || !currentBook) return;
+            if (get().enableCommandHistory) {
+                const { editorFacade } = await import('../features/editor/runtime/EditorFacade');
+                await editorFacade.undo();
+                return;
+            }
+            const { historyPast, historyFuture, documents } = get();
+            if (historyPast.length === 0) return;
 
-            const previousBook = historyPast[historyPast.length - 1];
+            const previousDocs = historyPast[historyPast.length - 1];
             const newPast = historyPast.slice(0, historyPast.length - 1);
-            const newFuture = [JSON.parse(JSON.stringify(currentBook)), ...historyFuture];
+            // 压入 historyFuture 前，对 activeDocument 进行深拷贝，其他共享引用
+            const activeId = get().activeDocumentId;
+            const snapshot = documents.map(d => d.id === activeId ? JSON.parse(JSON.stringify(d)) : d);
+            const newFuture = [snapshot, ...historyFuture];
 
             set({
                 historyPast: newPast,
                 historyFuture: newFuture
             });
 
-            await saveStateAndHistory(previousBook, true, true);
+            await saveStateAndHistory(previousDocs, true, false, true);
         },
 
         redo: async () => {
-            const { historyPast, historyFuture, currentBook } = get();
-            if (historyFuture.length === 0 || !currentBook) return;
+            if (get().enableCommandHistory) {
+                const { editorFacade } = await import('../features/editor/runtime/EditorFacade');
+                await editorFacade.redo();
+                return;
+            }
+            const { historyPast, historyFuture, documents } = get();
+            if (historyFuture.length === 0) return;
 
-            const nextBook = historyFuture[0];
+            const nextDocs = historyFuture[0];
             const newFuture = historyFuture.slice(1);
-            const newPast = [...historyPast, JSON.parse(JSON.stringify(currentBook))];
+            const activeId = get().activeDocumentId;
+            const snapshot = documents.map(d => d.id === activeId ? JSON.parse(JSON.stringify(d)) : d);
+            const newPast = [...historyPast, snapshot];
 
             set({
                 historyPast: newPast,
                 historyFuture: newFuture
             });
 
-            await saveStateAndHistory(nextBook, true, true);
+            await saveStateAndHistory(nextDocs, true, false, true);
+        },
+
+        setEnableCommandHistory: (enabled: boolean) => {
+            set({ enableCommandHistory: enabled });
+        },
+
+        setCommandHistoryState: (canUndo: boolean, canRedo: boolean) => {
+            set({ commandCanUndo: canUndo, commandCanRedo: canRedo });
         },
 
         loadBook: async (id: string) => {
             set({ isLoading: true, error: null });
             try {
-                const book = await bookService.getBook(id);
-                if (book) {
-                    const migratedBook = migrateBookToVirtualCoords(book);
-                    if (book.coordinateSystem !== 'virtual') {
-                        await bookService.saveBook(migratedBook);
+                const result = await bookService.getBook(id);
+                if (result) {
+                    const { book, cover, pages } = result;
+                    const documents: Document[] = [];
+                    
+                    if (cover) {
+                        documents.push({
+                            id: 'cover',
+                            type: 'cover',
+                            sourceId: cover.id,
+                            title: '书封',
+                            elements: cover.frontElements || [],
+                            background: cover.frontBackground || { color: '#FFFFFF', gridPattern: false },
+                            thumbnail: cover.frontThumbnail || ''
+                        });
+                    } else {
+                        documents.push({
+                            id: 'cover',
+                            type: 'cover',
+                            sourceId: crypto.randomUUID(),
+                            title: '书封',
+                            elements: [],
+                            background: { color: '#FFFFFF', gridPattern: false },
+                            thumbnail: ''
+                        });
                     }
+
+                    const pageDocs = pages.map((p, idx) => ({
+                        id: p.id,
+                        type: 'page' as const,
+                        sourceId: p.id,
+                        title: p.pageTitle || `第 ${idx + 1} 页`,
+                        elements: p.elements || [],
+                        background: p.background || { color: '#FFFFFF', gridPattern: false },
+                        thumbnail: p.thumbnail || '',
+                        isChapterStart: p.isChapterStart,
+                        templateId: p.templateId
+                    }));
+                    documents.push(...pageDocs);
+
                     set({
-                        currentBook: migratedBook,
+                        currentBook: { ...book, pages: pages },
+                        cover: cover,
+                        documents,
+                        activeDocumentId: 'cover',
                         isLoading: false,
                         historyPast: [],
                         historyFuture: [],
-                        editorScope: 'chapters',
+                        editorScope: 'cover', // 默认激活封面
                         activePhotoEdit: null,
                         activeTextEdit: null,
                         activeStickerEdit: null
@@ -452,9 +872,7 @@ export const useBookStore = create<BookState>((set, get) => {
                 } else {
                     set({ isLoading: false, error: '加载作品失败: 未找到对应作品' });
                 }
-                // 异步预载模板和主题
                 get().loadTemplates();
-                get().loadThemes();
             } catch (e) {
                 set({ isLoading: false, error: '加载作品失败' });
                 console.error(e);
@@ -464,58 +882,51 @@ export const useBookStore = create<BookState>((set, get) => {
         createBook: async (title: string, author: string) => {
             set({ isLoading: true, error: null });
             try {
-                // 先尝试获取已有书籍
-                const response = await bookService.getBooks(1, 1);
-                if (response.items.length > 0) {
-                    const fullBook = await bookService.getBook(response.items[0].id);
-                    if (fullBook) {
-                        const migratedBook = migrateBookToVirtualCoords(fullBook);
-                        if (fullBook.coordinateSystem !== 'virtual') {
-                            await bookService.saveBook(migratedBook);
-                        }
-                        set({
-                            currentBook: migratedBook,
-                            isLoading: false,
-                            historyPast: [],
-                            historyFuture: [],
-                            editorScope: 'chapters',
-                            activePhotoEdit: null,
-                            activeTextEdit: null,
-                            activeStickerEdit: null
-                        });
-                        // 异步预载模板和主题
-                        get().loadTemplates();
-                        get().loadThemes();
-                        return;
-                    }
-                }
-
+                const newBookId = crypto.randomUUID();
                 const newBook: Book = {
-                    id: crypto.randomUUID(),
+                    id: newBookId,
                     userId: useAuthStore.getState().user?.id || '',
                     title,
                     author,
                     createdAt: Date.now(),
                     pages: [],
-                    theme: 'classic',
-                    pageSize: 'A4',
-                    showPreface: true,
-                    coordinateSystem: 'virtual'
+                    pageSize: 'A4'
                 };
+                // 保存新书，后端会自动分配并创建空白 cover_id 封面
                 await bookService.saveBook(newBook);
-                set({
-                    currentBook: newBook,
-                    isLoading: false,
-                    historyPast: [],
-                    historyFuture: [],
-                    editorScope: 'chapters',
-                    activePhotoEdit: null,
-                    activeTextEdit: null,
-                    activeStickerEdit: null
-                });
-                // 异步预载模板和主题
+                
+                // 再次读取刚创建的书籍，以获得完整的 V2 结构
+                const result = await bookService.getBook(newBookId);
+                if (result) {
+                    const { book, cover, pages } = result;
+                    const documents: Document[] = [];
+                    if (cover) {
+                        documents.push({
+                            id: 'cover',
+                            type: 'cover',
+                            sourceId: cover.id,
+                            title: '书封',
+                            elements: cover.frontElements || [],
+                            background: cover.frontBackground || { color: '#FFFFFF', gridPattern: false },
+                            thumbnail: cover.frontThumbnail || ''
+                        });
+                    }
+                    
+                    set({
+                        currentBook: { ...book, pages: pages },
+                        cover: cover,
+                        documents,
+                        activeDocumentId: 'cover',
+                        isLoading: false,
+                        historyPast: [],
+                        historyFuture: [],
+                        editorScope: 'cover',
+                        activePhotoEdit: null,
+                        activeTextEdit: null,
+                        activeStickerEdit: null
+                    });
+                }
                 get().loadTemplates();
-                get().loadThemes();
             } catch (e) {
                 set({ isLoading: false, error: '创建作品失败' });
                 console.error(e);
@@ -527,187 +938,211 @@ export const useBookStore = create<BookState>((set, get) => {
             if (!currentBook) return;
 
             const updatedBook = { ...currentBook, ...updates };
-            await saveStateAndHistory(updatedBook);
+            await bookService.saveBook(updatedBook);
+            set({ currentBook: updatedBook });
         },
 
         addChapter: async (title: string) => {
-            const { currentBook } = get();
+            const { currentBook, documents } = get();
             if (!currentBook) return undefined;
 
-            const chapters = getVirtualChapters(currentBook.pages);
-
-            const firstPage: Page = {
-                id: crypto.randomUUID(),
-                content: '',
-                photos: [],
-                layout: 'single'
-            };
-
-            const newChapter: Chapter = {
-                id: crypto.randomUUID(),
+            const newPageId = crypto.randomUUID();
+            const newPageDoc: Document = {
+                id: newPageId,
+                type: 'page',
+                sourceId: newPageId,
                 title,
-                date: new Date().toISOString().split('T')[0],
-                pages: [firstPage]
+                elements: [],
+                background: { color: '#FFFFFF', gridPattern: false },
+                thumbnail: ''
             };
 
-            const updatedChapters = [...chapters, newChapter];
-            const updatedBook = {
-                ...currentBook,
-                pages: flattenChapters(updatedChapters, currentBook.id)
-            };
+            const updatedDocs = [...documents, newPageDoc];
+            await saveStateAndHistory(updatedDocs);
+            
+            await bookService.addPage(currentBook.id, {
+                id: newPageId,
+                pageTitle: title,
+                isChapterStart: true,
+                templateId: 'custom',
+                sortOrder: updatedDocs.length,
+                elements: [],
+                background: { color: '#FFFFFF', gridPattern: false }
+            });
 
-            await saveStateAndHistory(updatedBook);
-            return newChapter.id;
+            return newPageId;
         },
 
         updateChapter: async (chapterId: string, updates: Partial<Chapter>) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c =>
-                c.id === chapterId ? { ...c, ...updates } : c
+            const { documents } = get();
+            const updatedDocs = documents.map(d =>
+                d.id === chapterId ? { ...d, title: updates.title || d.title } : d
             );
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         deleteChapter: async (chapterId: string) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.filter(c => c.id !== chapterId);
-
-            const updatedBook = {
-                ...currentBook,
-                pages: flattenChapters(updatedChapters, currentBook.id)
-            };
-
-            await saveStateAndHistory(updatedBook);
+            const { documents } = get();
+            const updatedDocs = documents.map(d =>
+                d.id === chapterId ? { ...d, title: '未命名页面' } : d
+            );
+            await saveStateAndHistory(updatedDocs);
         },
 
         reorderChapters: async (newChapters: Chapter[]) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
+            const { documents } = get();
+            const coverDoc = documents.find(d => d.type === 'cover');
+            const nextPages: Document[] = [];
+            newChapters.forEach(chap => {
+                chap.pages.forEach(p => {
+                    const found = documents.find(d => d.id === p.id);
+                    if (found) nextPages.push(found);
+                });
+            });
 
-            const updatedBook = { ...currentBook, pages: flattenChapters(newChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            const nextDocs = coverDoc ? [coverDoc, ...nextPages] : nextPages;
+            await saveStateAndHistory(nextDocs);
+            
+            nextPages.forEach((p, idx) => {
+                bookService.savePage(p.id, { sortOrder: idx }).catch(console.error);
+            });
         },
 
         reorderPages: async (chapterId: string, newPages: Page[]) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
+            const { documents } = get();
+            const coverDoc = documents.find(d => d.type === 'cover');
+            const newPageIds = new Set(newPages.map(p => p.id));
+            const otherPages = documents.filter(d => d.type === 'page' && !newPageIds.has(d.id));
 
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c =>
-                c.id === chapterId ? { ...c, pages: newPages } : c
-            );
+            const orderedDocs = newPages.map(p => {
+                const found = documents.find(d => d.id === p.id);
+                return found || {
+                    id: p.id,
+                    type: 'page' as const,
+                    sourceId: p.id,
+                    title: p.pageTitle || '',
+                    elements: p.elements || [],
+                    background: p.background || { color: '#FFFFFF' },
+                    thumbnail: p.thumbnail || ''
+                };
+            });
 
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            const nextDocs = coverDoc ? [coverDoc, ...otherPages, ...orderedDocs] : [...otherPages, ...orderedDocs];
+            await saveStateAndHistory(nextDocs);
+
+            const onlyPages = nextDocs.filter(d => d.type === 'page');
+            onlyPages.forEach((p, idx) => {
+                bookService.savePage(p.id, { sortOrder: idx }).catch(console.error);
+            });
         },
 
         addPageToChapter: async (chapterId: string) => {
-            const { currentBook } = get();
+            const { currentBook, documents } = get();
             if (!currentBook) return '';
 
-            const newPage: Page = {
-                id: crypto.randomUUID(),
-                content: '',
-                photos: [],
-                layout: 'single'
+            const newPageId = crypto.randomUUID();
+            const newPageDoc: Document = {
+                id: newPageId,
+                type: 'page',
+                sourceId: newPageId,
+                title: `第 ${documents.length} 页`,
+                elements: [],
+                background: { color: '#FFFFFF', gridPattern: false },
+                thumbnail: ''
             };
 
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    return { ...c, pages: [...c.pages, newPage] };
-                }
-                return c;
+            const updatedDocs = [...documents, newPageDoc];
+            await saveStateAndHistory(updatedDocs);
+
+            await bookService.addPage(currentBook.id, {
+                id: newPageId,
+                pageTitle: `第 ${documents.length} 页`,
+                isChapterStart: false,
+                templateId: 'custom',
+                sortOrder: updatedDocs.length,
+                elements: [],
+                background: { color: '#FFFFFF', gridPattern: false }
             });
 
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
-
-            return newPage.id;
+            return newPageId;
         },
 
         updatePage: async (chapterId: string, pageId: string, updates: Partial<Page>) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p =>
-                        p.id === pageId ? { ...p, ...updates } : p
-                    );
-                    return { ...c, pages: updatedPages };
+            const { documents } = get();
+            const updatedDocs = documents.map(d => {
+                if (d.id === pageId) {
+                    return {
+                        ...d,
+                        title: updates.pageTitle !== undefined ? updates.pageTitle : d.title,
+                        background: updates.background !== undefined ? updates.background : d.background,
+                        elements: updates.elements !== undefined ? updates.elements : d.elements,
+                        thumbnail: updates.thumbnail !== undefined ? updates.thumbnail : d.thumbnail
+                    };
                 }
-                return c;
+                return d;
             });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         deletePage: async (chapterId: string, pageId: string) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    if (c.pages.length <= 1) return c;
-                    return { ...c, pages: c.pages.filter(p => p.id !== pageId) };
-                }
-                return c;
-            });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            const { documents } = get();
+            const updatedDocs = documents.filter(d => d.id !== pageId);
+            await saveStateAndHistory(updatedDocs);
+            await bookService.deletePage(pageId);
         },
 
         duplicatePage: async (chapterId: string, pageId: string) => {
-            const { currentBook } = get();
+            const { currentBook, documents } = get();
             if (!currentBook) return '';
 
-            const chapters = getVirtualChapters(currentBook.pages);
-            let newPageId = '';
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const sourceIdx = c.pages.findIndex(p => p.id === pageId);
-                    if (sourceIdx === -1) return c;
+            const sourceDoc = documents.find(d => d.id === pageId);
+            if (!sourceDoc) return '';
 
-                    const sourcePage = c.pages[sourceIdx];
-                    // 深拷贝页面，生成新 ID；照片共享原始引用但生成新照片 ID
-                    newPageId = crypto.randomUUID();
-                    const duplicated: Page = {
-                        ...JSON.parse(JSON.stringify(sourcePage)),
-                        id: newPageId,
-                        isChapterStart: false, // 复制的页面不作为章节起始
-                        photos: sourcePage.photos.map(photo => ({
-                            ...photo,
-                            id: crypto.randomUUID(), // 新照片 ID，但 url/ossKey 共享
-                        })),
-                    };
-
-                    const newPages = [...c.pages];
-                    newPages.splice(sourceIdx + 1, 0, duplicated);
-                    return { ...c, pages: newPages };
+            const newPageId = crypto.randomUUID();
+            const copiedElements = JSON.parse(JSON.stringify(sourceDoc.elements || [])) as CanvasElement[];
+            const idMapping = new Map<string, string>();
+            copiedElements.forEach(el => {
+                const newElId = crypto.randomUUID();
+                idMapping.set(el.id, newElId);
+                el.id = newElId;
+            });
+            copiedElements.forEach(el => {
+                if (el.groupId && idMapping.has(el.groupId)) {
+                    el.groupId = idMapping.get(el.groupId);
                 }
-                return c;
             });
 
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            const duplicatedDoc: Document = {
+                id: newPageId,
+                type: 'page',
+                sourceId: newPageId,
+                title: `${sourceDoc.title} (副本)`,
+                elements: copiedElements,
+                background: { ...sourceDoc.background },
+                thumbnail: sourceDoc.thumbnail
+            };
+
+            const sourceIdx = documents.findIndex(d => d.id === pageId);
+            const nextDocs = [...documents];
+            nextDocs.splice(sourceIdx + 1, 0, duplicatedDoc);
+
+            await saveStateAndHistory(nextDocs);
+
+            await bookService.addPage(currentBook.id, {
+                id: newPageId,
+                pageTitle: `${sourceDoc.title} (副本)`,
+                isChapterStart: false,
+                templateId: 'custom',
+                sortOrder: sourceIdx + 1,
+                elements: copiedElements,
+                background: sourceDoc.background
+            });
+
             return newPageId;
         },
 
         uploadPhotoToPage: async (chapterId: string, pageId: string, file: File, slotIndex?: number) => {
-            const { currentBook, updateUploadJob, clearUploadJob } = get();
+            const { currentBook, updateUploadJob, clearUploadJob, documents } = get();
             if (!currentBook) return;
 
             const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -719,39 +1154,31 @@ export const useBookStore = create<BookState>((set, get) => {
                 });
                 updateUploadJob(jobId, file.name, 100, 'success');
                 
-                // 成功后 1.5s 渐隐清空进度任务
                 setTimeout(() => {
                     clearUploadJob(jobId);
                 }, 1500);
 
                 const photo = { ...uploadedPhoto, slotIndex };
 
-                const chapters = getVirtualChapters(currentBook.pages);
-                const updatedChapters = chapters.map(c => {
-                    if (c.id === chapterId) {
-                        const updatedPages = c.pages.map(p => {
-                            if (p.id === pageId) {
-                                let updatedPhotos = p.photos;
-                                if (slotIndex !== undefined) {
-                                    updatedPhotos = p.photos.map(ph =>
-                                        ph.slotIndex === slotIndex ? { ...ph, slotIndex: undefined } : ph
-                                    );
+                const updatedDocs = documents.map(d => {
+                    if (d.id === pageId) {
+                        if (d.elements) {
+                            const updatedElements = d.elements.map(el => {
+                                if (el.type === 'photo-frame' && (slotIndex === undefined || (el as any).slotIndex === slotIndex)) {
+                                    return { ...el, photo };
                                 }
-                                return { ...p, photos: [...updatedPhotos, photo] };
-                            }
-                            return p;
-                        });
-                        return { ...c, pages: updatedPages };
+                                return el;
+                            });
+                            return { ...d, elements: updatedElements };
+                        }
                     }
-                    return c;
+                    return d;
                 });
 
-                const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-                await saveStateAndHistory(updatedBook);
+                await saveStateAndHistory(updatedDocs);
             } catch (e) {
                 console.error('Failed to upload photo', e);
                 updateUploadJob(jobId, file.name, 0, 'error');
-                // 错误任务 5s 后清除，避免一直挂载
                 setTimeout(() => {
                     clearUploadJob(jobId);
                 }, 5000);
@@ -759,9 +1186,7 @@ export const useBookStore = create<BookState>((set, get) => {
         },
 
         addMockPhotoToPage: async (chapterId: string, pageId: string, url: string, caption: string, slotIndex?: number) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
+            const { documents } = get();
             const photo = {
                 id: crypto.randomUUID(),
                 url,
@@ -769,127 +1194,67 @@ export const useBookStore = create<BookState>((set, get) => {
                 slotIndex
             };
 
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p => {
-                        if (p.id === pageId) {
-                            let updatedPhotos = p.photos;
-                            if (slotIndex !== undefined) {
-                                updatedPhotos = p.photos.map(ph =>
-                                    ph.slotIndex === slotIndex ? { ...ph, slotIndex: undefined } : ph
-                                );
+            const updatedDocs = documents.map(d => {
+                if (d.id === pageId) {
+                    if (d.elements) {
+                        const updatedElements = d.elements.map(el => {
+                            if (el.type === 'photo-frame' && (slotIndex === undefined || (el as any).slotIndex === slotIndex)) {
+                                return { ...el, photo };
                             }
-                            return { ...p, photos: [...updatedPhotos, photo] };
-                        }
-                        return p;
-                    });
-                    return { ...c, pages: updatedPages };
+                            return el;
+                        });
+                        return { ...d, elements: updatedElements };
+                    }
                 }
-                return c;
+                return d;
             });
 
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         deletePhotoFromPage: async (chapterId: string, pageId: string, photoId: string) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p => {
-                        if (p.id === pageId) {
-                            if (p.elements) {
-                                const updatedElements = p.elements.map(el => {
-                                    if (el.id === photoId && el.type === 'photo-frame') {
-                                        return { ...el, photo: null } as PhotoFrameElement;
-                                    }
-                                    return el;
-                                });
-                                return { ...p, elements: updatedElements };
-                            }
-                            return { ...p, photos: p.photos.filter(photo => photo.id !== photoId) };
-                        }
-                        return p;
-                    });
-                    return { ...c, pages: updatedPages };
+            const { documents } = get();
+            const updatedDocs = documents.map(d => {
+                if (d.id === pageId) {
+                    if (d.elements) {
+                        const updatedElements = d.elements.filter(el => el.id !== photoId);
+                        return { ...d, elements: updatedElements };
+                    }
                 }
-                return c;
+                return d;
             });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         reorderPhotosInPage: async (chapterId: string, pageId: string, newPhotoIds: string[]) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p => {
-                        if (p.id === pageId) {
-                            const photoMap = new Map(p.photos.map(photo => [photo.id, photo]));
-                            const reorderedPhotos = newPhotoIds
-                                .map(id => photoMap.get(id))
-                                .filter(Boolean) as typeof p.photos;
-                            return { ...p, photos: reorderedPhotos };
-                        }
-                        return p;
-                    });
-                    return { ...c, pages: updatedPages };
-                }
-                return c;
-            });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            // 在 V2 Canvas 体系中，图片是 Canvas 组件，层级由元素本身表示
         },
 
         updatePhotoSettings: async (chapterId: string, pageId: string, photoId: string, updates: Partial<Photo>) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p => {
-                        if (p.id === pageId) {
-                            if (p.elements) {
-                                const updatedElements = p.elements.map(el => {
-                                    if (el.id === photoId && el.type === 'photo-frame') {
-                                        const pf = el as PhotoFrameElement;
-                                        return {
-                                            ...pf,
-                                            photo: pf.photo ? { ...pf.photo, ...updates } : {
-                                                id: `photo-${Date.now()}`,
-                                                url: updates.url || '',
-                                                ...updates
-                                            }
-                                        } as PhotoFrameElement;
+            const { documents } = get();
+            const updatedDocs = documents.map(d => {
+                if (d.id === pageId) {
+                    if (d.elements) {
+                        const updatedElements = d.elements.map(el => {
+                            if (el.id === photoId && el.type === 'photo-frame') {
+                                const pf = el as PhotoFrameElement;
+                                return {
+                                    ...pf,
+                                    photo: pf.photo ? { ...pf.photo, ...updates } : {
+                                        id: `photo-${Date.now()}`,
+                                        url: updates.url || '',
+                                        ...updates
                                     }
-                                    return el;
-                                });
-                                return { ...p, elements: updatedElements };
+                                } as PhotoFrameElement;
                             }
-                            const updatedPhotos = p.photos.map(photo =>
-                                photo.id === photoId ? { ...photo, ...updates } : photo
-                            );
-                            return { ...p, photos: updatedPhotos };
-                        }
-                        return p;
-                    });
-                    return { ...c, pages: updatedPages };
+                            return el;
+                        });
+                        return { ...d, elements: updatedElements };
+                    }
                 }
-                return c;
+                return d;
             });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         assignPhotoToSlot: async (
@@ -899,59 +1264,46 @@ export const useBookStore = create<BookState>((set, get) => {
             targetSlotIndex: number,
             sourceSlotIndex?: number
         ) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p => {
-                        if (p.id === pageId) {
-                            const updatedPhotos = p.photos.map(photo => {
-                                if (photo.id === photoId) {
-                                    return { ...photo, slotIndex: targetSlotIndex };
-                                }
-                                if (photo.slotIndex === targetSlotIndex) {
-                                    return { ...photo, slotIndex: sourceSlotIndex };
-                                }
-                                return photo;
-                            });
-                            return { ...p, photos: updatedPhotos };
+            const { documents } = get();
+            const updatedDocs = documents.map(d => {
+                if (d.id === pageId && d.elements) {
+                    const updatedElements = d.elements.map(el => {
+                        if (el.type === 'photo-frame') {
+                            const pf = el as any;
+                            if (pf.photo?.id === photoId) {
+                                return { ...pf, slotIndex: targetSlotIndex };
+                            }
+                            if (pf.slotIndex === targetSlotIndex) {
+                                return { ...pf, slotIndex: sourceSlotIndex };
+                            }
                         }
-                        return p;
+                        return el;
                     });
-                    return { ...c, pages: updatedPages };
+                    return { ...d, elements: updatedElements };
                 }
-                return c;
+                return d;
             });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         clearPhotoSlot: async (chapterId: string, pageId: string, photoId: string) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const updatedChapters = chapters.map(c => {
-                if (c.id === chapterId) {
-                    const updatedPages = c.pages.map(p => {
-                        if (p.id === pageId) {
-                            const updatedPhotos = p.photos.map(photo =>
-                                photo.id === photoId ? { ...photo, slotIndex: undefined } : photo
-                            );
-                            return { ...p, photos: updatedPhotos };
+            const { documents } = get();
+            const updatedDocs = documents.map(d => {
+                if (d.id === pageId && d.elements) {
+                    const updatedElements = d.elements.map(el => {
+                        if (el.type === 'photo-frame') {
+                            const pf = el as any;
+                            if (pf.photo?.id === photoId) {
+                                return { ...pf, slotIndex: undefined };
+                            }
                         }
-                        return p;
+                        return el;
                     });
-                    return { ...c, pages: updatedPages };
+                    return { ...d, elements: updatedElements };
                 }
-                return c;
+                return d;
             });
-
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         movePhotoBetweenPages: async (
@@ -962,47 +1314,43 @@ export const useBookStore = create<BookState>((set, get) => {
             photoId: string,
             targetSlotIndex: number
         ) => {
-            const { currentBook } = get();
-            if (!currentBook) return;
-
-            const chapters = getVirtualChapters(currentBook.pages);
-            const sourceChapter = chapters.find(c => c.id === sourceChapterId);
-            const sourcePage = sourceChapter?.pages.find(p => p.id === sourcePageId);
-            const photoToMove = sourcePage?.photos.find(p => p.id === photoId);
+            const { documents } = get();
+            let photoToMove: any = null;
+            const sourceDoc = documents.find(d => d.id === sourcePageId);
+            if (sourceDoc && sourceDoc.elements) {
+                const el = sourceDoc.elements.find(e => e.type === 'photo-frame' && (e as any).photo?.id === photoId);
+                if (el) photoToMove = (el as any).photo;
+            }
 
             if (!photoToMove) return;
 
-            const updatedPhotoToMove = { ...photoToMove, slotIndex: targetSlotIndex };
-
-            const updatedChapters = chapters.map(c => {
-                let newPages = c.pages;
-
-                if (c.id === sourceChapterId) {
-                    newPages = newPages.map(p => {
-                        if (p.id === sourcePageId) {
-                            return { ...p, photos: p.photos.filter(photo => photo.id !== photoId) };
-                        }
-                        return p;
-                    });
+            const updatedDocs = documents.map(d => {
+                if (d.id === sourcePageId && d.elements) {
+                    return {
+                        ...d,
+                        elements: d.elements.map(el => {
+                            if (el.type === 'photo-frame' && (el as any).photo?.id === photoId) {
+                                return { ...el, photo: null };
+                            }
+                            return el;
+                        })
+                    };
                 }
-
-                if (c.id === targetChapterId) {
-                    newPages = newPages.map(p => {
-                        if (p.id === targetPageId) {
-                            const cleanedPhotos = p.photos.map(ph =>
-                                ph.slotIndex === targetSlotIndex ? { ...ph, slotIndex: undefined } : ph
-                            );
-                            return { ...p, photos: [...cleanedPhotos, updatedPhotoToMove] };
-                        }
-                        return p;
-                    });
+                if (d.id === targetPageId && d.elements) {
+                    return {
+                        ...d,
+                        elements: d.elements.map(el => {
+                            if (el.type === 'photo-frame' && (el as any).slotIndex === targetSlotIndex) {
+                                return { ...el, photo: { ...photoToMove, slotIndex: targetSlotIndex } };
+                            }
+                            return el;
+                        })
+                    };
                 }
-
-                return { ...c, pages: newPages };
+                return d;
             });
 
-            const updatedBook = { ...currentBook, pages: flattenChapters(updatedChapters, currentBook.id) };
-            await saveStateAndHistory(updatedBook);
+            await saveStateAndHistory(updatedDocs);
         },
 
         exportBook: async (type: 'pdf' | 'markdown') => {
@@ -1021,24 +1369,56 @@ export const useBookStore = create<BookState>((set, get) => {
         },
 
         triggerSaveBook: async () => {
-            const { currentBook } = get();
+            const { currentBook, documents, activeDocumentId } = get();
             if (!currentBook) return;
+            const activeDoc = documents.find(d => d.id === activeDocumentId);
+            if (!activeDoc) return;
+            
             set({ saveStatus: 'saving' });
             try {
-                if (currentBook.type === 'template' || currentBook.id.startsWith('temp-book-')) {
-                    await saveTemplateFromVirtualBook(currentBook);
+                if (activeDoc.type === 'cover') {
+                    await bookService.saveCover(currentBook.id, {
+                        frontElements: activeDoc.elements,
+                        frontBackground: activeDoc.background,
+                        backBackground: activeDoc.background,
+                        frontThumbnail: activeDoc.thumbnail
+                    });
                 } else {
-                    await bookService.saveBook(currentBook);
+                    await bookService.savePage(activeDoc.id, {
+                        elements: activeDoc.elements,
+                        background: activeDoc.background,
+                        thumbnail: activeDoc.thumbnail,
+                        pageTitle: activeDoc.title
+                    });
                 }
                 set({ saveStatus: 'saved' });
+                triggerAsyncThumbnailUpdate(currentBook.id);
             } catch (e) {
                 console.error('Failed to manually save book state', e);
                 set({ saveStatus: 'error' });
             }
         },
 
+        debouncedSave: () => {
+            const { currentBook, documents, activeDocumentId } = get();
+            if (!currentBook) return;
+            const activeDoc = documents.find(d => d.id === activeDocumentId);
+            if (!activeDoc) return;
+            
+            set({ saveStatus: 'saving' });
+            debouncedSaveDocFn(
+                activeDoc,
+                currentBook.id,
+                () => {
+                    set({ saveStatus: 'saved' });
+                    triggerAsyncThumbnailUpdate(currentBook.id);
+                },
+                () => set({ saveStatus: 'error' })
+            );
+        },
+
         flushSaveBook: () => {
-            debouncedSaveFn.flush();
+            debouncedSaveDocFn.flush();
         },
 
         updateUploadJob: (id, name, progress, status = 'uploading') => {
@@ -1059,3 +1439,23 @@ export const useBookStore = create<BookState>((set, get) => {
         }
     };
 });
+
+import React from 'react';
+
+export const useConvertedPages = () => {
+    const documents = useBookStore(state => state.documents);
+    return React.useMemo(() => {
+        return documents.map(d => ({
+            id: d.id,
+            pageTitle: d.title,
+            isChapterStart: d.isChapterStart,
+            templateId: d.templateId || 'custom',
+            elements: d.elements,
+            background: d.background,
+            thumbnail: d.thumbnail,
+            pageType: d.type === 'cover' ? ('cover' as const) : ('content' as const),
+            content: '',
+            photos: [] as Photo[]
+        }));
+    }, [documents]);
+};

@@ -13,6 +13,7 @@ interface CanvasStickerElementProps {
     pageId: string;
     readOnly?: boolean;
     onUpdate: (updates: Partial<StickerElement>) => void;
+    onDragEnd?: () => void;
     canvasRef: React.RefObject<HTMLDivElement | null>;
     siblingElements: CanvasElement[];
 }
@@ -27,6 +28,7 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
     pageId,
     readOnly = false,
     onUpdate,
+    onDragEnd,
     canvasRef,
     siblingElements
 }) => {
@@ -44,7 +46,8 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
         element,
         canvasRef,
         siblingElements,
-        onUpdate as any
+        onUpdate as any,
+        onDragEnd
     );
 
     const handleClick = (e: React.MouseEvent) => {
@@ -69,7 +72,7 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
         width: `${(element.width / virtualWidth) * 100}%`,
         height: `${(element.height / virtualHeight) * 100}%`,
         transform: `translate(-50%, -50%) rotate(${element.rotate || 0}deg)`,
-        zIndex: element.zIndex || 20,
+        zIndex: isSelected ? 9999 : (element.zIndex || 20),
         userSelect: 'none',
         pointerEvents: readOnly ? 'none' : 'auto',
         ...(() => {
@@ -135,12 +138,14 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
                     />
                 );
             } else if (cachedAsset.file_url) {
+                const imageUrl = `${cachedAsset.file_url}${cachedAsset.file_url.includes('?') ? '&' : '?'}cors=1`;
                 return (
                     <img
-                        src={cachedAsset.file_url}
+                        src={imageUrl}
                         alt={cachedAsset.name}
                         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         draggable={false}
+                        crossOrigin="anonymous"
                     />
                 );
             }
@@ -155,6 +160,12 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
             onClick={handleClick}
             onMouseDown={(e) => {
                 if (editorMode === 'select') {
+                    e.stopPropagation();
+                    setActiveStickerEdit({
+                        chapterId,
+                        pageId,
+                        stickerId: element.id
+                    });
                     handleMouseDown(e, 'move');
                 }
             }}

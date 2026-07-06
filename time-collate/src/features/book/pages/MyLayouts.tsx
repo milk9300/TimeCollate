@@ -11,6 +11,7 @@ import { MainLayout } from '../../common/components/MainLayout';
 import { TemplateCard } from '../components/TemplateCard';
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal';
 import { ConfirmModal } from '../../common/components/ConfirmModal';
+import { BUILTIN_THEMES } from '../../../rendering/ThemeManager';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { useBookStore } from '../../../store';
 import axios from 'axios';
@@ -22,7 +23,7 @@ const bookService = getBookService();
 export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
     const navigate = useNavigate();
     const { user } = useAuthStore();
-    const { templates, loadTemplates, themes, loadThemes } = useBookStore();
+    const { templates, loadTemplates } = useBookStore();
     const [isLoading, setIsLoading] = useState(true);
     
     // 删除确认弹窗状态
@@ -62,8 +63,7 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
             try {
                 const [booksRes] = await Promise.all([
                     bookService.getBooks(1, 100),
-                    loadTemplates(),
-                    loadThemes()
+                    loadTemplates()
                 ]);
                 if (booksRes && booksRes.items) {
                     setBooks(booksRes.items);
@@ -75,11 +75,11 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
             }
         };
         initData();
-    }, [loadTemplates, loadThemes]);
+    }, [loadTemplates]);
 
-    // 过滤出当前用户自己创建的自定义模板。如果是管理员，则包含所有系统内置/管理员发布的模板以便进行管理
+    // 过滤出当前用户自己创建的自定义模板。如果是管理员或设计师，则包含所有系统内置/系统预置的模板以便进行管理
     const myTemplates = (templates || []).filter(
-        t => t.creatorId === user?.id || (user?.role === 'admin' && t.creatorId === 'system')
+        t => t.creatorId === user?.id || ((user?.role === 'admin' || user?.role === 'designer') && t.creatorId === 'system')
     );
 
     // 动态计算指标：已应用的时光集页面数量，以及自由拼贴数量
@@ -89,8 +89,8 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
     books.forEach(book => {
         if (book.pages && Array.isArray(book.pages)) {
             book.pages.forEach(p => {
-                if (p.layout) {
-                    if (p.layout === 'single' || p.layout === 'free') {
+                if (p.templateId) {
+                    if (p.templateId === 'single' || p.templateId === 'free') {
                         freeCollageCount++;
                     } else {
                         appliedPagesCount++;
@@ -228,7 +228,7 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
                         <div className="bg-[#FCFBF8] border border-[#EDE5D3] p-5 rounded-[24px_16px_20px_18px] shadow-[1px_2px_6px_rgba(80,70,50,0.04)] rotate-[-0.6deg] hover:rotate-0 hover:scale-[1.02] hover:shadow-[3px_6px_15px_rgba(70,50,30,0.08)] transition-all duration-300 flex flex-col">
                             <span className="text-[9px] font-black text-[#A69B85] uppercase tracking-wider block">设计资产</span>
                             <h4 className="text-[14px] font-bold text-[#5C4033] mt-1.5 tracking-tight font-sans">
-                                {user?.role === 'admin' ? (
+                                {user?.role === 'admin' || user?.role === 'designer' ? (
                                     <>管理系统模板 {myTemplates.length} 个</>
                                 ) : (
                                     <>已创作 {myTemplates.length} 个排版骨架 <span className="text-xs text-[#8C7A6B] font-semibold">/ {templates.length - myTemplates.length} 个预设</span></>
@@ -280,7 +280,7 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
                 <TemplatePreviewModal
                     template={previewTemplate}
                     onClose={() => setPreviewTemplate(null)}
-                    themes={themes}
+                    themes={BUILTIN_THEMES}
                     actionButton={
                         <div className="w-full flex gap-3">
                             <button

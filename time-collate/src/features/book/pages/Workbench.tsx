@@ -105,6 +105,13 @@ export function Workbench() {
     }>({ isOpen: false, bookId: '', bookTitle: '', templateTitle: '' });
     const [isPublishingTemplate, setIsPublishingTemplate] = useState(false);
 
+    // 安全校验：非管理员/设计师无法使用设计 Tab
+    useEffect(() => {
+        if (activeTab === 'designs' && user?.role !== 'admin' && user?.role !== 'designer') {
+            setSearchParams({ tab: 'books' });
+        }
+    }, [activeTab, user?.role, setSearchParams]);
+
     // 初始化加载
     useEffect(() => {
         if (activeTab === 'books') {
@@ -230,9 +237,9 @@ export function Workbench() {
     const handleSaveBookInfo = async (updates: Partial<Book>) => {
         const { bookId } = editModal;
         try {
-            const book = await bookService.getBook(bookId);
-            if (book) {
-                const updatedBook = { ...book, ...updates };
+            const data = await bookService.getBook(bookId);
+            if (data) {
+                const updatedBook = { ...data.book, ...updates, pages: data.pages };
                 await bookService.saveBook(updatedBook);
                 setBooks(books.map(b => b.id === bookId ? { ...b, ...updates } : b));
             }
@@ -338,7 +345,6 @@ export function Workbench() {
                 category: bookData.category,
                 createdAt: Date.now(),
                 pages: [],
-                theme: 'classic',
                 pageSize: 'A4'
             };
             await bookService.saveBook(newBook);
@@ -378,7 +384,7 @@ export function Workbench() {
             <div className="flex h-full relative font-['Outfit',_sans-serif]">
                 
                 {/* 主创作区域 */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 sm:p-8">
+                <div className={`flex-1 overflow-y-auto custom-scrollbar ${activeTab === 'resources' ? 'p-0' : 'p-6 sm:p-8'}`}>
                     
                     {/* 1. Canva 式顶部渐变 Banner (仅在 回忆书 首页渲染) */}
                     {activeTab === 'books' && (
@@ -585,14 +591,14 @@ export function Workbench() {
                                     onClick={() => setDesignSubTab('pageTemplates')}
                                     className={`pb-3 relative cursor-pointer ${designSubTab === 'pageTemplates' ? 'text-indigo-650 font-black' : 'hover:text-slate-650'}`}
                                 >
-                                    <span>页模板</span>
+                                    <span>页面</span>
                                     {designSubTab === 'pageTemplates' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
                                 </button>
                                 <button 
                                     onClick={() => setDesignSubTab('bookTemplates')}
                                     className={`pb-3 relative cursor-pointer ${designSubTab === 'bookTemplates' ? 'text-indigo-650 font-black' : 'hover:text-slate-650'}`}
                                 >
-                                    <span>书模板</span>
+                                    <span>整书</span>
                                     {designSubTab === 'bookTemplates' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
                                 </button>
                             </div>
@@ -600,41 +606,7 @@ export function Workbench() {
                             {/* 渲染子路由组件的嵌入版 */}
                             <div className="space-y-4">
                                 {designSubTab === 'pageTemplates' && (
-                                    <div className="flex flex-col gap-6">
-                                        {/* Segmented Control for page templates */}
-                                        <div className="flex justify-start">
-                                            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/50 shadow-inner select-none gap-1">
-                                                <button
-                                                    onClick={() => setPageTemplateSegment('preset')}
-                                                    className={`px-6 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                                                        pageTemplateSegment === 'preset'
-                                                            ? 'bg-white text-indigo-650 shadow-md shadow-indigo-100/50'
-                                                            : 'text-slate-500 hover:text-slate-800'
-                                                    }`}
-                                                >
-                                                    系统精选
-                                                </button>
-                                                <button
-                                                    onClick={() => setPageTemplateSegment('my')}
-                                                    className={`px-6 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                                                        pageTemplateSegment === 'my'
-                                                            ? 'bg-white text-indigo-650 shadow-md shadow-indigo-100/50'
-                                                            : 'text-slate-500 hover:text-slate-800'
-                                                    }`}
-                                                >
-                                                    我的设计
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            {pageTemplateSegment === 'preset' ? (
-                                                <Market isEmbed={true} />
-                                            ) : (
-                                                <MyLayouts isEmbed={true} />
-                                            )}
-                                        </div>
-                                    </div>
+                                    <MyLayouts isEmbed={true} />
                                 )}
 
                                 {designSubTab === 'bookTemplates' && (
@@ -646,7 +618,7 @@ export function Workbench() {
 
                     {/* 4. TAB 3: 个人照片资源中心 */}
                     {activeTab === 'resources' && (
-                        <div>
+                        <div className="h-screen overflow-hidden">
                             <AssetCenter isEmbed={true} />
                         </div>
                     )}

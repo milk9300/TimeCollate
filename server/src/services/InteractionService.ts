@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { RowDataPacket } from 'mysql2';
 import { notificationService } from './NotificationService.js';
 
-export type EntityType = 'book' | 'template' | 'theme';
+export type EntityType = 'book' | 'template';
 export type MetricType = 'view' | 'like' | 'favorite';
 
 /**
@@ -316,8 +316,6 @@ export class InteractionService {
             query = 'SELECT user_id as ownerId, title as name FROM books WHERE id = ?';
         } else if (entityType === 'template') {
             query = 'SELECT creator_id as ownerId, name FROM book_templates WHERE id = ?';
-        } else if (entityType === 'theme') {
-            query = 'SELECT creator_id as ownerId, name FROM book_themes WHERE id = ?';
         } else {
             return { ownerId: null, name: null };
         }

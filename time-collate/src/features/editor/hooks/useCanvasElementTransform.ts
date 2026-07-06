@@ -21,8 +21,19 @@ export function useCanvasElementTransform(
     element: CanvasElement,
     canvasRef: React.RefObject<HTMLDivElement | null>,
     siblingElements: CanvasElement[],
-    onUpdate: (updatedFields: Partial<CanvasElement>) => void
+    onUpdate: (updatedFields: Partial<CanvasElement>) => void,
+    onDragEnd?: () => void
 ) {
+    const onDragEndRef = useRef(onDragEnd);
+    React.useEffect(() => {
+        onDragEndRef.current = onDragEnd;
+    }, [onDragEnd]);
+
+    const elementRef = useRef(element);
+    React.useEffect(() => {
+        elementRef.current = element;
+    }, [element]);
+
     const transformStateRef = useRef<TransformState | null>(null);
     const [isTransforming, setIsTransforming] = useState(false);
 
@@ -138,9 +149,9 @@ export function useCanvasElementTransform(
                 targetLineY = ref.val;
             }
             // 我的中轴对齐参考点
-            const diffCenter = Math.abs(myCenterY - ref.val);
-            if (diffCenter < bestDiffY) {
-                bestDiffY = diffCenter;
+            const diffCenterY = Math.abs(myCenterY - ref.val);
+            if (diffCenterY < bestDiffY) {
+                bestDiffY = diffCenterY;
                 bestSnapY = ref.val - height / 2;
                 targetLineY = ref.val;
             }
@@ -209,40 +220,75 @@ export function useCanvasElementTransform(
                     y: snappedY
                 });
             } else if (transformState.type === 'resize') {
-                const dir = transformState.direction;
+                const dir = transformState.direction || '';
                 let newX = transformState.startElementX;
                 let newY = transformState.startElementY;
                 let newW = transformState.startElementW;
                 let newH = transformState.startElementH;
 
-                // 根据不同控制柄计算拉伸 (拉伸下限限制在 10 虚拟单位)
-                if (dir?.includes('e')) {
-                    newW = Math.max(10, transformState.startElementW + dxVirtual);
-                }
-                if (dir?.includes('w')) {
-                    const candidateW = transformState.startElementW - dxVirtual;
-                    if (candidateW >= 10) {
-                        newW = candidateW;
-                        newX = transformState.startElementX + dxVirtual;
+                const isCorner = dir.length === 2; // 两个字母组合代表角点（nw, ne, se, sw）
+
+                if (isCorner) {
+                    // 角缩放：执行等比例缩放
+                    const startW = transformState.startElementW;
+                    const startH = transformState.startElementH;
+
+                    // 根据水平鼠标移动计算宽度变化量 dw
+                    let dw = 0;
+                    if (dir.includes('e')) {
+                        dw = dxVirtual;
+                    } else if (dir.includes('w')) {
+                        dw = -dxVirtual;
                     }
-                }
-                if (dir?.includes('s')) {
-                    newH = Math.max(10, transformState.startElementH + dyVirtual);
-                }
-                if (dir?.includes('n')) {
-                    const candidateH = transformState.startElementH - dyVirtual;
-                    if (candidateH >= 10) {
-                        newH = candidateH;
-                        newY = transformState.startElementY + dyVirtual;
+
+                    newW = Math.max(10, startW + dw);
+                    const scale = newW / startW;
+                    newH = startH * scale;
+
+                    // 根据固定对角点重新计算 X 和 Y 坐标
+                    if (dir.includes('w')) {
+                        newX = (transformState.startElementX + startW) - newW;
+                    }
+                    if (dir.includes('n')) {
+                        newY = (transformState.startElementY + startH) - newH;
+                    }
+                } else {
+                    // 边缩放：执行单向自由拉伸
+                    if (dir.includes('e')) {
+                        newW = Math.max(10, transformState.startElementW + dxVirtual);
+                    }
+                    if (dir.includes('w')) {
+                        const candidateW = transformState.startElementW - dxVirtual;
+                        if (candidateW >= 10) {
+                            newW = candidateW;
+                            newX = transformState.startElementX + dxVirtual;
+                        }
+                    }
+                    if (dir.includes('s')) {
+                        newH = Math.max(10, transformState.startElementH + dyVirtual);
+                    }
+                    if (dir.includes('n')) {
+                        const candidateH = transformState.startElementH - dyVirtual;
+                        if (candidateH >= 10) {
+                            newH = candidateH;
+                            newY = transformState.startElementY + dyVirtual;
+                        }
                     }
                 }
 
-                onUpdate({
-                    x: newX,
-                    y: newY,
-                    width: newW,
-                    height: newH
-                });
+                if (element.type === 'text') {
+                    onUpdate({
+                        x: newX,
+                        width: newW
+                    });
+                } else {
+                    onUpdate({
+                        x: newX,
+                        y: newY,
+                        width: newW,
+                        height: newH
+                    });
+                }
             } else if (transformState.type === 'rotate') {
                 // 计算旋转中心点绝对像素坐标
                 const centerPoint = {
@@ -278,10 +324,27 @@ export function useCanvasElementTransform(
 
         const handleMouseUp = () => {
             setIsTransforming(false);
+            const state = transformStateRef.current;
+            const latestElement = elementRef.current;
+            
+            // 仅在有实际数值变更时标记为已修改
+            const hasChanged = !!(
+                state &&
+                (latestElement.x !== state.startElementX ||
+                 latestElement.y !== state.startElementY ||
+                 latestElement.width !== state.startElementW ||
+                 latestElement.height !== state.startElementH ||
+                 (latestElement.rotate ?? 0) !== state.startRotate)
+            );
+
             transformStateRef.current = null;
             setAlignLines([]); // 清空对齐辅助线
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
+            
+            if (hasChanged) {
+                onDragEndRef.current?.(); // 执行拖拽结束回调以落库及推入撤销栈
+            }
         };
 
         window.addEventListener('mousemove', handleMouseMove);

@@ -74,11 +74,11 @@ export class R2StorageService implements IStorageService {
     /**
      * 获取客户端直传的预签名 URL（PUT 方式上传）
      */
-    async getPresignedUploadUrl(originalName: string, contentType: string, expires?: number): Promise<{ uploadUrl: string; ossKey: string }> {
+    async getPresignedUploadUrl(originalName: string, contentType: string, expires?: number, customKey?: string): Promise<{ uploadUrl: string; ossKey: string }> {
         const ext = path.extname(originalName).toLowerCase();
         const dateFolder = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
         const fileName = `${uuidv4()}${ext}`;
-        const ossKey = `${config.oss.prefix}${dateFolder}/${fileName}`;
+        const ossKey = customKey || `${config.oss.prefix}${dateFolder}/${fileName}`;
 
         const command = new PutObjectCommand({
             Bucket: config.oss.bucket,
@@ -112,72 +112,39 @@ export class R2StorageService implements IStorageService {
         if (!key) return '';
         const cleanKey = key.startsWith('/') ? key.slice(1) : key;
 
-        const accessKeyId = config.oss.accessKeyId;
-        const secretAccessKey = config.oss.secretAccessKey;
-        const region = config.oss.region.startsWith('oss-') ? config.oss.region.slice(4) : config.oss.region;
-        const bucket = config.oss.bucket;
-
-        const cleanRegion = config.oss.region.startsWith('oss-')
-            ? config.oss.region.slice(4)
-            : config.oss.region;
-
-        const host = `${bucket}.oss-${cleanRegion}.aliyuncs.com`;
-        const endpoint = config.oss.customDomain 
-            ? config.oss.customDomain.replace(/^https?:\/\//, '') 
-            : host;
-
-        const amzDate = new Date().toISOString().replace(/[:-]/g, '').split('.')[0] + 'Z';
-        const dateStamp = amzDate.slice(0, 8);
-        const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
-
-        const queryParams: Record<string, string> = {
-            'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-            'X-Amz-Credential': `${accessKeyId}/${credentialScope}`,
-            'X-Amz-Date': amzDate,
-            'X-Amz-Expires': expires.toString(),
-            'X-Amz-SignedHeaders': 'host',
-        };
-
-        const sortedQuery = Object.entries(queryParams)
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-            .join('&');
-
-        const canonicalRequest = [
-            'GET',
-            `/${cleanKey.split('/').map(encodeURIComponent).join('/')}`,
-            sortedQuery,
-            `host:${endpoint}\n`,
-            'host',
-            'UNSIGNED-PAYLOAD'
-        ].join('\n');
-
-        const hashedCanonicalRequest = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
-
-        const stringToSign = [
-            'AWS4-HMAC-SHA256',
-            amzDate,
-            credentialScope,
-            hashedCanonicalRequest
-        ].join('\n');
-
-        const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, 's3');
-        const signature = hexHmac(signingKey, stringToSign);
-
-        const protocol = config.oss.customDomain && config.oss.customDomain.startsWith('http:') ? 'http' : 'https';
-        let signedUrl = `${protocol}://${endpoint}/${cleanKey}?${sortedQuery}&X-Amz-Signature=${signature}`;
-
+        let processStr = '';
         if (style) {
-            let processStr = style;
+            processStr = style;
             if (style === 'thumbnail') {
                 processStr = 'image/resize,w_300/format,webp/quality,q_60';
             } else if (style === 'normal') {
                 processStr = 'image/resize,w_1080/format,webp/quality,q_80';
             }
-            signedUrl += `&x-oss-process=${encodeURIComponent(processStr)}`;
         }
 
-        return signedUrl;
+        const querySuffix = processStr ? `?x-oss-process=${processStr}` : '';
+
+        // 如果配置了自定义域名，直接拼接自定义域名和 key（公共读且不带过期签名）
+        if (config.oss.customDomain) {
+            try {
+                let baseDomain = config.oss.customDomain;
+                if (!/^https?:\/\//i.test(baseDomain)) {
+                    baseDomain = `https://${baseDomain}`;
+                }
+                if (baseDomain.endsWith('/')) {
+                    baseDomain = baseDomain.slice(0, -1);
+                }
+                return `${baseDomain}/${cleanKey}${querySuffix}`;
+            } catch (e) {
+                console.error('Failed to format R2 URL with custom domain:', e);
+            }
+        }
+
+        // 备用：默认使用阿里云公共读域名拼接
+        const cleanRegion = config.oss.region.startsWith('oss-')
+            ? config.oss.region.slice(4)
+            : config.oss.region;
+        return `https://${config.oss.bucket}.oss-${cleanRegion}.aliyuncs.com/${cleanKey}${querySuffix}`;
     }
 
     /**

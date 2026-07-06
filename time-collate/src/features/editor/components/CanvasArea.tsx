@@ -2,12 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { useBookStore, getVirtualChapters } from '../../../store';
 import { ZoomableCanvas, MIN_ZOOM, MAX_ZOOM, type ZoomableCanvasRef } from './ZoomableCanvas';
 import { BookCoverLayout } from '../../../rendering/layouts/BookCoverLayout';
-import { PrefaceLayout } from '../../../rendering/layouts/PrefaceLayout';
 import { BookRenderer } from '../../../rendering/BookRenderer';
+import { FreeCanvasPage } from './FreeCanvasPage';
 import { PhotoInspector } from './PhotoInspector';
 import { ZoomControls } from './ZoomControls';
 import { PAGE_SIZES } from '../../../rendering/PhysicalConstants';
-import { BookOpen, HelpCircle } from 'lucide-react';
+import { BookOpen, HelpCircle, MousePointer, Hand } from 'lucide-react';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 
 interface CanvasAreaProps {
@@ -39,11 +39,13 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
     handleZoomOut
 }) => {
     const editorScope = useBookStore(state => state.editorScope);
+    const activeFrontPage = useBookStore(state => state.activeFrontPage);
 
     const isEditingCover = editorScope === 'cover';
     const [showTips, setShowTips] = useState(true);
     // 1. 切片订阅，仅当编辑器属性或模式变化时触发相应更新
     const currentBook = useBookStore(state => state.currentBook);
+    const documents = useBookStore(state => state.documents);
     const editorMode = useBookStore(state => state.editorMode);
     const setActivePhotoEdit = useBookStore(state => state.setActivePhotoEdit);
     const setActiveTextEdit = useBookStore(state => state.setActiveTextEdit);
@@ -51,10 +53,29 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
 
     const isLivePreview = editorMode === 'hand';
 
+    // 转换 V2 Documents 为 Legacy Pages，以便直接适配原有的 getVirtualChapters 算法和渲染层
+    const convertedPages = useMemo(() => {
+        return documents.map(d => ({
+            id: d.id,
+            pageTitle: d.title,
+            isChapterStart: d.isChapterStart,
+            templateId: d.templateId || 'custom',
+            elements: d.elements,
+            background: d.background,
+            thumbnail: d.thumbnail,
+            pageType: d.type === 'cover' ? ('cover' as const) : ('content' as const),
+            content: '',
+            photos: []
+        }));
+    }, [documents]);
+
     const chapters = useMemo(() => {
-        if (!currentBook || !currentBook.pages) return [];
-        return getVirtualChapters(currentBook.pages);
-    }, [currentBook]);
+        return getVirtualChapters(convertedPages);
+    }, [convertedPages]);
+
+    const coverPage = useMemo(() => {
+        return convertedPages.find(p => p.pageType === 'cover') || null;
+    }, [convertedPages]);
 
     const activeChapter = chapters.find(c => c.id === activeChapterId) || null;
     const activePage = activeChapter?.pages.find(p => p.id === activePageId) || null;
@@ -82,33 +103,94 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
                     isFullscreen={isFullscreenPreview}
                 >
                     {isEditingCover ? (
-                        <div
-                            className="relative bg-white rounded-lg shadow-2xl overflow-hidden border border-black/10 select-none animate-in zoom-in-95 duration-300 flex flex-col"
-                            style={{
-                                width: `${baseWidth}mm`,
-                                height: `${baseHeight}mm`
-                            }}
-                        >
-                            {/* 纸张纹理层 */}
+                        activeFrontPage === 'backCover' ? (
                             <div
-                                className="absolute inset-0 pointer-events-none opacity-[0.03] z-[2] print:hidden"
-                                style={{
-                                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-                                }}
-                            />
-                            <BookCoverLayout book={currentBook} />
-                        </div>
-                    ) : (
-                        activePage && (
-                            /* Inner page block */
-                            <div
-                                className="relative bg-white rounded-lg shadow-2xl overflow-hidden border border-black/10 select-none animate-in zoom-in-95 duration-300"
+                                className="book-page-canvas-wrapper relative bg-white rounded-lg shadow-2xl overflow-hidden border border-black/10 select-none animate-in zoom-in-95 duration-300 animate-duration-200"
                                 style={{
                                     width: `${baseWidth}mm`,
                                     height: `${baseHeight}mm`
                                 }}
                             >
                                 <div
+                                    onClick={() => {
+                                        setActivePhotoEdit(null);
+                                        setActiveTextEdit(null);
+                                        setActiveStickerEdit(null);
+                                    }}
+                                    className="bg-white relative overflow-hidden transition-all duration-300 cursor-default w-full h-full"
+                                >
+                                    {/* 纸张纹理层 */}
+                                    <div
+                                        className="absolute inset-0 pointer-events-none opacity-[0.03] z-[2] print:hidden"
+                                        style={{
+                                            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+                                        }}
+                                    />
+                                    <BookRenderer
+                                        page={{ id: 'virtual-back-cover', content: '', photos: [], templateId: 'back-cover' }}
+                                        pageSize={currentBook.pageSize}
+                                        book={currentBook}
+                                        readOnly={true}
+                                        isCanvas={true}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            coverPage && (
+                                <div
+                                    className="book-page-canvas-wrapper relative bg-white rounded-lg shadow-2xl overflow-hidden border border-black/10 select-none animate-in zoom-in-95 duration-300"
+                                    style={{
+                                        width: `${baseWidth}mm`,
+                                        height: `${baseHeight}mm`
+                                    }}
+                                >
+                                    <div
+                                        id="book-cover-page-capture-container"
+                                        onClick={() => {
+                                            setActivePhotoEdit(null);
+                                            setActiveTextEdit(null);
+                                            setActiveStickerEdit(null);
+                                        }}
+                                        className="bg-white relative overflow-hidden transition-all duration-300 cursor-pointer w-full h-full"
+                                    >
+                                        {/* 纸张纹理层 */}
+                                        <div
+                                            className="absolute inset-0 pointer-events-none opacity-[0.03] z-[2] print:hidden"
+                                            style={{
+                                                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+                                            }}
+                                        />
+                                        {isLivePreview ? (
+                                            <BookRenderer
+                                                page={coverPage}
+                                                pageSize={currentBook.pageSize}
+                                                book={currentBook}
+                                                readOnly={true}
+                                                isCanvas={true}
+                                            />
+                                        ) : (
+                                            <FreeCanvasPage
+                                                page={coverPage}
+                                                scale={previewScale}
+                                                isCover={true}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        )
+                    ) : (
+                        activePage && (
+                            /* Inner page block */
+                            <div
+                                className="book-page-canvas-wrapper relative bg-white rounded-lg shadow-2xl overflow-hidden border border-black/10 select-none animate-in zoom-in-95 duration-300"
+                                style={{
+                                    width: `${baseWidth}mm`,
+                                    height: `${baseHeight}mm`
+                                }}
+                            >
+                                <div
+                                    id="editor-active-page-canvas"
                                     onClick={() => {
                                         setActivePhotoEdit(null);
                                         setActiveTextEdit(null);
@@ -123,32 +205,28 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
                                             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
                                         }}
                                     />
-                                    <BookRenderer
-                                        page={activePage}
-                                        pageSize={currentBook.pageSize}
-                                        chapterTitle={activeChapter?.title}
-                                        chapterDate={activeChapter?.date}
-                                        chapterIndex={chapters.findIndex(c => c.id === activeChapter?.id)}
-                                        book={currentBook}
-                                        side={(() => {
-                                            const pageIndex = activeChapter?.pages.findIndex(p => p.id === activePageId) ?? 0;
-                                            return pageIndex % 2 === 0 ? 'left' : 'right';
-                                        })()}
-                                        readOnly={isLivePreview}
-                                        isCanvas={true}
-                                    />
-                                    <div className="absolute top-4 left-4 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full z-20 pointer-events-none">
-                                        第 {(() => {
-                                            let idx = 1;
-                                            for (const ch of chapters) {
-                                                for (const p of ch.pages) {
-                                                    if (p.id === activePage.id) return idx;
-                                                    idx++;
-                                                }
-                                            }
-                                            return 1;
-                                        })()} 页
-                                    </div>
+                                    {isLivePreview ? (
+                                        <BookRenderer
+                                            page={activePage}
+                                            pageSize={currentBook.pageSize}
+                                            chapterTitle={activeChapter?.title}
+                                            chapterDate={activeChapter?.date}
+                                            chapterIndex={chapters.findIndex(c => c.id === activeChapter?.id)}
+                                            book={currentBook}
+                                            side={(() => {
+                                                const pageIndex = activeChapter?.pages.findIndex(p => p.id === activePageId) ?? 0;
+                                                return pageIndex % 2 === 0 ? 'left' : 'right';
+                                            })()}
+                                            readOnly={true}
+                                            isCanvas={true}
+                                        />
+                                    ) : (
+                                        <FreeCanvasPage
+                                            chapter={activeChapter!}
+                                            page={activePage}
+                                            scale={previewScale}
+                                        />
+                                    )}
                                 </div>
                             </div>
                         )
@@ -160,6 +238,32 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
 
             {/* Floating Zoom Control Bubble & Paper Size Overlay Footer */}
             <div className={`absolute right-6 z-20 flex items-center gap-2.5 transition-all duration-300 ease-in-out ${floatingBottomClass}`}>
+                {/* 模式选择（选择 / 抓手） */}
+                <div className="bg-white/95 backdrop-blur-md shadow-lg p-1 rounded-full border border-gray-200/50 flex items-center gap-1 transition-all">
+                    <button
+                        onClick={() => useBookStore.setState({ editorMode: 'select' })}
+                        className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                            editorMode === 'select'
+                                ? 'bg-indigo-50 text-indigo-600 font-bold'
+                                : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                        }`}
+                        title="选择工具 (V)"
+                    >
+                        <MousePointer size={13} />
+                    </button>
+                    <button
+                        onClick={() => useBookStore.setState({ editorMode: 'hand' })}
+                        className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                            editorMode === 'hand'
+                                ? 'bg-indigo-50 text-indigo-600 font-bold'
+                                : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                        }`}
+                        title="抓手工具 (H / 空格)"
+                    >
+                        <Hand size={13} />
+                    </button>
+                </div>
+
                 <ZoomControls
                     previewScale={previewScale}
                     minZoom={MIN_ZOOM}

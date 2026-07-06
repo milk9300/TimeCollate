@@ -13,7 +13,7 @@ interface UserData {
     username: string;
     avatarUrl?: string | null;
     createdAt: number;
-    role: 'user' | 'admin';
+    role: 'user' | 'admin' | 'designer';
     status: 'active' | 'banned';
 }
 

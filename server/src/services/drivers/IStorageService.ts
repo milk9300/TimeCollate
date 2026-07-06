@@ -12,7 +12,7 @@ export interface IStorageService {
     /**
      * 获取客户端直传的预签名 URL（PUT 方式上传）
      */
-    getPresignedUploadUrl(originalName: string, contentType: string, expires?: number): Promise<{ uploadUrl: string; ossKey: string }>;
+    getPresignedUploadUrl(originalName: string, contentType: string, expires?: number, customKey?: string): Promise<{ uploadUrl: string; ossKey: string }>;
 
     /**
      * 删除文件

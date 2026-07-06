@@ -21,8 +21,8 @@ export function getThumbnailUrl(url: string | undefined, width: number = 800): s
     }
 
     try {
-        // 主要是针对阿里云 OSS 链接进行 WebP 转换和限宽
-        const isAliOss = url.includes('aliyuncs.com');
+        // 主要是针对阿里云 OSS 链接进行 WebP 转换和限宽（同时兼容 aliyuncs.com 默认域名和 media.foez.top 自定义域名）
+        const isAliOss = url.includes('aliyuncs.com') || url.includes('media.foez.top');
         if (isAliOss) {
             const separator = url.includes('?') ? '&' : '?';
             // 拼接阿里云 OSS 动态裁切规则：缩放到指定宽度，并强制输出为更高压缩率的 webp 格式

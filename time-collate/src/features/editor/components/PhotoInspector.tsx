@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { useBookStore } from '../../../store';
+import { useBookStore, useConvertedPages } from '../../../store';
+import { editorFacade } from '../runtime/EditorFacade';
 import { getBookService } from '../../../services/serviceFactory';
 import { 
     X, 
@@ -30,9 +31,16 @@ export const PhotoInspector: React.FC = () => {
 
     // 查找当前选中的 Photo 数据对象
     let photoData: any = null;
+    const pages = useConvertedPages();
     if (activePhotoEdit && currentBook) {
-        const page = currentBook.pages?.find(p => p.id === activePhotoEdit.pageId);
-        photoData = page?.photos.find(p => p.id === activePhotoEdit.photoId);
+        const page = pages.find(p => p.id === activePhotoEdit.pageId);
+        if (page) {
+            photoData = page.photos.find(p => p.id === activePhotoEdit.photoId);
+            if (!photoData && page.elements) {
+                const el = page.elements.find(e => e.id === activePhotoEdit.photoId && e.type === 'photo-frame') as any;
+                if (el) photoData = el.photo;
+            }
+        }
     }
 
     // 1. 位置实时计算同步逻辑
@@ -197,6 +205,16 @@ export const PhotoInspector: React.FC = () => {
                         step="0.05"
                         value={photoData.scale || 1.0}
                         onChange={(e) => handleScaleChange(parseFloat(e.target.value))}
+                        onMouseDown={() => {
+                            if (useBookStore.getState().enableCommandHistory) {
+                                editorFacade.beginTransaction();
+                            }
+                        }}
+                        onMouseUp={() => {
+                            if (useBookStore.getState().enableCommandHistory) {
+                                editorFacade.commitTransaction();
+                            }
+                        }}
                         className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-primary"
                     />
                 </div>
@@ -216,6 +234,16 @@ export const PhotoInspector: React.FC = () => {
                             step="1"
                             value={photoData.xOffset !== undefined ? photoData.xOffset : 50}
                             onChange={(e) => handleXOffsetChange(parseInt(e.target.value))}
+                            onMouseDown={() => {
+                                if (useBookStore.getState().enableCommandHistory) {
+                                    editorFacade.beginTransaction();
+                                }
+                            }}
+                            onMouseUp={() => {
+                                if (useBookStore.getState().enableCommandHistory) {
+                                    editorFacade.commitTransaction();
+                                }
+                            }}
                             className="flex-1 h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-primary"
                         />
                     </div>
@@ -236,6 +264,16 @@ export const PhotoInspector: React.FC = () => {
                             step="1"
                             value={photoData.yOffset !== undefined ? photoData.yOffset : 50}
                             onChange={(e) => handleYOffsetChange(parseInt(e.target.value))}
+                            onMouseDown={() => {
+                                if (useBookStore.getState().enableCommandHistory) {
+                                    editorFacade.beginTransaction();
+                                }
+                            }}
+                            onMouseUp={() => {
+                                if (useBookStore.getState().enableCommandHistory) {
+                                    editorFacade.commitTransaction();
+                                }
+                            }}
                             className="flex-1 h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-primary"
                         />
                     </div>

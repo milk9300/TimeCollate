@@ -325,7 +325,7 @@ export function AdminBuilder() {
     // 模板基础信息状态
     const [templateName, setTemplateName] = useState('');
     const [templateCategory, setTemplateCategory] = useState('general');
-    const [templateType, setTemplateType] = useState<'cover' | 'preface' | 'structural' | 'content'>('content');
+    const [templateType, setTemplateType] = useState<'cover' | 'structural' | 'content'>('content');
     const [visibility, setVisibility] = useState<'public' | 'private'>('public');
     const [creatorId, setCreatorId] = useState('system');
     const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
@@ -1827,7 +1827,6 @@ export function AdminBuilder() {
                                             >
                                                 <option value="content">内容页 (Content)</option>
                                                 <option value="cover">书封页 (Cover)</option>
-                                                <option value="preface">前言页 (Preface)</option>
                                                 <option value="structural">过渡页 (Structural)</option>
                                             </select>
                                         </div>

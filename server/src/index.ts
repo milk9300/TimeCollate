@@ -11,11 +11,12 @@ import authRouter from './routes/auth.js';
 import feedbacksRouter from './routes/feedbacks.js';
 import adminRouter from './routes/admin.js';
 import templatesRouter from './routes/templates.js';
-import themesRouter from './routes/themes.js';
 import interactionsRouter from './routes/interactions.js';
 import socialRouter from './routes/social.js';
 import notificationsRouter from './routes/notifications.js';
 import assetsRouter from './routes/assets.js';
+import collectionsRouter from './routes/collections.js';
+import pexelsRouter from './routes/pexels.js';
 import { interactionService } from './services/InteractionService.js';
 import { cleanupService } from './services/CleanupService.js';
 import './queue/exportQueue.js';
@@ -73,11 +74,12 @@ app.use('/api/share', shareRouter);
 app.use('/api/feedbacks', feedbacksRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/templates', templatesRouter);
-app.use('/api/themes', themesRouter);
 app.use('/api/interactions', interactionsRouter);
 app.use('/api/social', socialRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/assets', assetsRouter);
+app.use('/api/template-collections', collectionsRouter);
+app.use('/api/pexels', pexelsRouter);
 
 // 健康检查
 app.get('/health', (_req, res) => {

@@ -28,7 +28,51 @@ router.post('/login', async (req, res) => {
         }
 
         const data = await authService.login(username, password);
-        sendSuccess(res, data, '登录成功');
+        // 响应结构：{ user, accessToken, refreshToken }
+        // 为向后兼容保留 token 别名（等前端全部迁移完成后可移除）
+        sendSuccess(res, {
+            user: data.user,
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+            token: data.accessToken,
+        }, '登录成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * POST /api/auth/refresh
+ * 使用 Refresh Token 续签新的双令牌对
+ */
+router.post('/refresh', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        if (!refreshToken) {
+            return res.status(400).json({ success: false, error: 'refreshToken is required' });
+        }
+
+        const tokens = await authService.refreshAccessToken(refreshToken);
+        // 同样保留 token 别名以兼容
+        sendSuccess(res, {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            token: tokens.accessToken,
+        }, 'Token refreshed');
+    } catch (error) {
+        // Refresh Token 无效或过期返回 401
+        return res.status(401).json({ success: false, error: (error as Error).message });
+    }
+});
+
+/**
+ * POST /api/auth/logout
+ * 登出，吊销当前用户的所有 Refresh Token
+ */
+router.post('/logout', authMiddleware, async (req, res) => {
+    try {
+        await authService.revokeRefreshTokensByUser(req.userId!);
+        sendSuccess(res, null, '已安全登出');
     } catch (error) {
         sendError(res, error as Error);
     }

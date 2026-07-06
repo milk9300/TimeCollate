@@ -57,13 +57,13 @@ export class AssetPromotionService {
         // 使用 storageService.uploadFile
         const uploadResult = await storageService.uploadFile(cleanBuffer, originalName);
 
-        // 4. 插入 assets 表 (user_id = NULL 表示系统公开资产)
+        // 4. 插入 system_materials 表 (系统公开素材)
         const sysAssetUuid = `sys-asset-${uuidv4()}`;
         const now = Date.now();
 
         await pool.query(
-            `INSERT INTO assets (id, user_id, type, name, url, thumbnail, oss_key, size, created_at)
-             VALUES (?, NULL, 'photo', ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO system_materials (id, type, name, url, thumbnail, oss_key, size, created_at)
+             VALUES (?, 'photo', ?, ?, ?, ?, ?, ?)`,
             [
                 sysAssetUuid,
                 originalName,
@@ -73,12 +73,6 @@ export class AssetPromotionService {
                 cleanBuffer.length,
                 now
             ]
-        );
-
-        // 5. 插入 photo_metadata 表以保持表关联完整性
-        await pool.query(
-            `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, ?)`,
-            [uuidv4(), sysAssetUuid, '[]']
         );
 
         console.log(`[AssetPromotion] Successfully promoted private photo to public asset. New ID: ${sysAssetUuid}`);

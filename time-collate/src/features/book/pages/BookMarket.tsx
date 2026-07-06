@@ -82,7 +82,10 @@ export function BookMarket({ isEmbed = false }: { isEmbed?: boolean }) {
         try {
             const fullBook = await bookService.getBook(templateId);
             if (fullBook) {
-                setPreviewBook(fullBook);
+                setPreviewBook({
+                    ...fullBook.book,
+                    pages: fullBook.pages
+                });
                 setActivePageIdx(0);
             }
         } catch (error) {
@@ -314,7 +317,7 @@ export function BookMarket({ isEmbed = false }: { isEmbed?: boolean }) {
                                             <div className="flex-1 flex flex-col justify-between pt-4">
                                                 <div className="h-4 bg-slate-100 rounded-full w-2/3 mb-4" />
                                                 <div className="flex-1 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center text-slate-350 font-bold text-sm">
-                                                    [照片区域 - {previewBook.pages[activePageIdx]?.layout || '默认'} 排版]
+                                                    [照片区域 - {previewBook.pages[activePageIdx]?.templateId || '默认'} 排版]
                                                 </div>
                                                 <div className="h-3 bg-slate-100 rounded-full w-full mt-4" />
                                                 <div className="h-3 bg-slate-100 rounded-full w-4/5 mt-2" />
@@ -330,7 +333,7 @@ export function BookMarket({ isEmbed = false }: { isEmbed?: boolean }) {
                                                 <div className="flex-1 flex flex-col justify-between pt-4">
                                                     <div className="h-4 bg-slate-100 rounded-full w-1/2 mb-4" />
                                                     <div className="flex-1 bg-slate-50 rounded-2xl border border-dashed border-slate-200 flex items-center justify-center text-slate-350 font-bold text-sm">
-                                                        [照片区域 - {previewBook.pages[activePageIdx + 1]?.layout || '默认'} 排版]
+                                                        [照片区域 - {previewBook.pages[activePageIdx + 1]?.templateId || '默认'} 排版]
                                                     </div>
                                                     <div className="h-3 bg-slate-100 rounded-full w-full mt-4" />
                                                     <div className="h-3 bg-slate-100 rounded-full w-3/4 mt-2" />

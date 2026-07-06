@@ -10,7 +10,8 @@
         "start": "node dist/index.js",
         "db:init": "tsx src/scripts/initDb.ts",
         "db:migrate": "node dist/scripts/runAllMigrations.js",
-        "db:create-admin": "node dist/scripts/createAdmin.js"
+        "db:create-admin": "node dist/scripts/createAdmin.js",
+        "db:sync-fonts": "tsx src/scripts/font-pipeline/pipeline.ts"
     },
     "dependencies": {
         "@alicloud/fc20230330": "^4.7.5",

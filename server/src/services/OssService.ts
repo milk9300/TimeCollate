@@ -41,9 +41,10 @@ export async function uploadToOss(
 export async function getPresignedUploadUrl(
     originalName: string,
     contentType: string,
-    expires?: number
+    expires?: number,
+    customKey?: string
 ): Promise<{ uploadUrl: string; ossKey: string }> {
-    return storageService.getPresignedUploadUrl(originalName, contentType, expires);
+    return storageService.getPresignedUploadUrl(originalName, contentType, expires, customKey);
 }
 
 /**

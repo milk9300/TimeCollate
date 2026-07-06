@@ -39,6 +39,11 @@ export const config = {
         port: parseInt(process.env.REDIS_PORT || '6379', 10),
         password: process.env.REDIS_PASSWORD || '123456',
     },
+    // Pexels API 配置 (系统级图片素材源)
+    pexels: {
+        apiKey: process.env.PEXELS_API_KEY || '',
+        cacheTtlSeconds: parseInt(process.env.PEXELS_CACHE_TTL || '600', 10), // 搜索结果缓存 10 分钟
+    },
     // 阿里云 FC 3.0 配置
     fc: {
         httpUrl: process.env.FC_HTTP_URL || '', // HTTP 触发器公网访问地址

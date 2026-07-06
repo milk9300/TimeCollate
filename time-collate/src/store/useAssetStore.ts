@@ -20,6 +20,7 @@ interface AssetState {
     selectedTag: string | null;
     searchQuery: string;
     favoriteOnly: boolean;
+    selectedScope: 'user' | 'system' | 'all';
 
     // Upload Jobs
     uploadProgresses: Record<string, number>; // filename -> percentage (0-100)
@@ -28,13 +29,13 @@ interface AssetState {
     assetCache: Record<string, Material>;
 
     // Folder Actions
-    fetchFolders: () => Promise<void>;
+    fetchFolders: (scope?: 'user' | 'system' | 'all') => Promise<void>;
     createFolder: (name: string, parentId?: string | null) => Promise<void>;
     updateFolder: (id: string, name?: string, parentId?: string | null) => Promise<void>;
     deleteFolder: (id: string) => Promise<void>;
 
     // Material Actions
-    fetchMaterials: (page?: number) => Promise<void>;
+    fetchMaterials: (page?: number, scope?: 'user' | 'system' | 'all') => Promise<void>;
     uploadMaterials: (files: File[], folderId: string | null, type: string, tags?: string[]) => Promise<void>;
     updateMaterial: (id: string, name?: string, folderId?: string | null) => Promise<void>;
     deleteMaterial: (id: string) => Promise<void>;
@@ -50,6 +51,7 @@ interface AssetState {
     setSelectedTag: (tag: string | null) => void;
     setSearchQuery: (query: string) => void;
     setFavoriteOnly: (val: boolean) => void;
+    setSelectedScope: (scope: 'user' | 'system' | 'all') => void;
     clearFilters: () => void;
 }
 
@@ -66,10 +68,11 @@ export const useAssetStore = create<AssetState>()((set, get) => ({
     error: null,
 
     selectedFolderId: null,
-    selectedType: null,
+    selectedType: 'photo',
     selectedTag: null,
     searchQuery: '',
     favoriteOnly: false,
+    selectedScope: 'user',
 
     uploadProgresses: {},
 
@@ -96,22 +99,28 @@ export const useAssetStore = create<AssetState>()((set, get) => ({
         set({ favoriteOnly: val, currentPage: 1 });
         get().fetchMaterials(1);
     },
+    setSelectedScope: (scope) => {
+        set({ selectedScope: scope, currentPage: 1 });
+        get().fetchMaterials(1);
+    },
     clearFilters: () => {
         set({
             selectedFolderId: null,
-            selectedType: null,
+            selectedType: 'photo',
             selectedTag: null,
             searchQuery: '',
             favoriteOnly: false,
+            selectedScope: 'user',
             currentPage: 1
         });
         get().fetchMaterials(1);
     },
 
     // Folder Actions
-    fetchFolders: async () => {
+    fetchFolders: async (scope) => {
         try {
-            const list = await assetService.getFolders();
+            const activeScope = scope || get().selectedScope;
+            const list = await assetService.getFolders(activeScope);
             set({ folders: list });
         } catch (error: any) {
             set({ error: error.message || 'Failed to fetch folders' });
@@ -160,19 +169,40 @@ export const useAssetStore = create<AssetState>()((set, get) => ({
         }
     },
 
-    // Material Actions
-    fetchMaterials: async (page = 1) => {
+    fetchMaterials: async (page = 1, scope) => {
         set({ isLoading: true, error: null });
         try {
-            const { selectedFolderId, selectedType, selectedTag, searchQuery, favoriteOnly, pageSize } = get();
+            const { selectedFolderId, selectedType, selectedTag, searchQuery, favoriteOnly, pageSize, selectedScope } = get();
+            
+            // 智能推导 scope 防护：如果是官方虚拟文件夹，或者是贴纸/字体类型，强制转为 system 获取
+            let activeScope = scope || selectedScope;
+            if (
+                selectedFolderId?.startsWith('sys-virtual-') || 
+                selectedType === 'sticker' || 
+                selectedType === 'font'
+            ) {
+                activeScope = 'system';
+            }
+
+            // 智能转换：如果是顶级目录并且没有全局搜索过滤，将 folderId 转为 'root' 查散装素材；如果有全局过滤，则为 undefined 查所有素材
+            let queryFolderId: string | undefined = undefined;
+            const isSearchingOrFiltering = !!(selectedType || selectedTag || searchQuery || favoriteOnly);
+            
+            if (selectedFolderId) {
+                queryFolderId = selectedFolderId;
+            } else if (selectedFolderId === null && !isSearchingOrFiltering) {
+                queryFolderId = 'root'; // 在没有过滤的根视图下，只查最外层 folder_id IS NULL 的散装素材
+            }
+
             const result = await assetService.getMaterials({
-                folderId: selectedFolderId || undefined,
+                folderId: queryFolderId,
                 type: selectedType || undefined,
                 tag: selectedTag || undefined,
                 favorite: favoriteOnly || undefined,
                 search: searchQuery || undefined,
                 page,
-                pageSize
+                pageSize,
+                scope: activeScope
             });
 
             // 增量 merge 到全局素材缓存中，供渲染器同步检索

@@ -47,8 +47,12 @@ router.get('/:id', authMiddleware, async (req, res) => {
             return res.status(404).json({ success: false, error: '模板不存在' });
         }
 
-        // 零信任校验：仅限公开模板或创作者本人访问
-        if (template.visibility !== 'public' && template.creatorId !== req.userId) {
+        // 获取当前登录用户及角色属性
+        const user = await authService.getUserById(req.userId!);
+        const isPrivileged = user?.role === 'admin' || (user?.role as string) === 'designer';
+
+        // 零信任校验：仅限公开模板、创作者本人、或者管理员与设计师访问
+        if (template.visibility !== 'public' && template.creatorId !== req.userId && !isPrivileged) {
             return res.status(403).json({ success: false, error: '权限不足，无法访问该私有模板' });
         }
 
@@ -68,11 +72,11 @@ import { sanitizePageToTemplate } from '../utils/templateSanitizer.js';
 router.post('/publish', authMiddleware, async (req, res) => {
     try {
         const user = await authService.getUserById(req.userId!);
-        if (!user || (user.role !== 'creator' && user.role !== 'admin')) {
-            return res.status(403).json({ success: false, error: '权限不足，仅允许创作者或管理员发布模板到公共市场' });
+        if (!user || (user.role !== 'creator' && user.role !== 'admin' && (user.role as string) !== 'designer')) {
+            return res.status(403).json({ success: false, error: '权限不足，仅允许创作者、设计师或管理员发布模板到公共市场' });
         }
 
-        const { id, name, templateType, photoCount, category, elements, background, thumbnailUrl } = req.body;
+        const { id, name, templateType, photoCount, category, elements, background, thumbnailUrl, coverUrl, tags } = req.body;
         
         if (!id || !name || !elements) {
             return res.status(400).json({ success: false, error: '必填参数缺失 (id, name, elements)' });
@@ -89,9 +93,11 @@ router.post('/publish', authMiddleware, async (req, res) => {
             category: category || 'General',
             layoutSchema: sanitizedSchema,
             thumbnailUrl,
+            coverUrl,
             visibility: 'public' as const,
             creatorId: req.userId!,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            tags: tags || []
         };
 
         const saved = await templateService.saveTemplate(templateData);
@@ -103,7 +109,7 @@ router.post('/publish', authMiddleware, async (req, res) => {
 
 /**
  * POST /api/templates
- * 保存/更新动态模板 (支持普通用户与管理员角色自适应鉴权)
+ * 保存/更新动态模板 (支持普通用户、设计师与管理员角色自适应鉴权)
  */
 router.post('/', authMiddleware, async (req, res) => {
     try {
@@ -114,20 +120,20 @@ router.post('/', authMiddleware, async (req, res) => {
 
         // 获取当前登录用户及角色属性
         const user = await authService.getUserById(req.userId!);
-        const isAdmin = user?.role === 'admin';
+        const isPrivileged = user?.role === 'admin' || (user?.role as string) === 'designer';
 
         // 检查模板是否已存在
         const existingTemplate = await templateService.getTemplateById(template.id);
         
         if (existingTemplate) {
-            // 水平/垂直越权防护：非管理员只能更新属于自己的模板
-            if (!isAdmin && existingTemplate.creatorId !== req.userId) {
+            // 水平/垂直越权防护：非管理员/非设计师只能更新属于自己的模板
+            if (!isPrivileged && existingTemplate.creatorId !== req.userId) {
                 return res.status(403).json({ success: false, error: '权限不足，无法修改他人或系统模板' });
             }
         }
 
         // 防御性净化与参数绑定
-        if (!isAdmin) {
+        if (!isPrivileged) {
             // 普通用户强制将其绑定为创作者
             template.creatorId = req.userId;
             // 确保可见性属于枚举值
@@ -135,7 +141,7 @@ router.post('/', authMiddleware, async (req, res) => {
                 template.visibility = 'private';
             }
         } else {
-            // 管理员若未指定则默认为 system
+            // 管理员/设计师若未指定则默认为 system
             if (!template.creatorId) {
                 template.creatorId = 'system';
             }
@@ -150,7 +156,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
 /**
  * DELETE /api/templates/:id
- * 删除动态模板 (支持所有者或管理员权限)
+ * 删除动态模板 (支持所有者、设计师或管理员权限)
  */
 router.delete('/:id', authMiddleware, async (req, res) => {
     try {
@@ -158,7 +164,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
         // 获取当前用户角色
         const user = await authService.getUserById(req.userId!);
-        const isAdmin = user?.role === 'admin';
+        const isPrivileged = user?.role === 'admin' || (user?.role as string) === 'designer';
 
         // 获取目标模板详情
         const template = await templateService.getTemplateById(id);
@@ -166,8 +172,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
             return res.status(404).json({ success: false, error: '模板不存在' });
         }
 
-        // 防水平/垂直越权：非管理员只能删除自己的模板
-        if (!isAdmin && template.creatorId !== req.userId) {
+        // 防水平/垂直越权：非特权用户只能删除自己的模板
+        if (!isPrivileged && template.creatorId !== req.userId) {
             return res.status(403).json({ success: false, error: '权限不足，无法删除他人或系统模板' });
         }
 
@@ -231,6 +237,71 @@ router.delete('/:id/collect', authMiddleware, async (req, res) => {
         }
 
         sendSuccess(res, null, '取消收藏成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * POST /api/templates/publish-page
+ * 用户或设计师在编辑器中将某一页发布为单页模板 (支持自适应公开/私有属性)
+ */
+router.post('/publish-page', authMiddleware, async (req, res) => {
+    try {
+        const { pageId, name, templateType, category, tags, thumbnailUrl, coverUrl, visibility } = req.body;
+        if (!pageId || !name) {
+            return res.status(400).json({ success: false, error: '必填参数缺失 (pageId, name)' });
+        }
+
+        // 1. 零信任校验：确保目标页面属于本人的书籍
+        const [pages]: any[] = await pool.query(
+            'SELECT book_id FROM pages WHERE id = ?',
+            [pageId]
+        );
+        if (pages.length === 0) {
+            return res.status(404).json({ success: false, error: '页面不存在' });
+        }
+        const bookId = pages[0].book_id;
+
+        const [books]: any[] = await pool.query(
+            'SELECT user_id FROM books WHERE id = ? AND deleted_at IS NULL',
+            [bookId]
+        );
+        if (books.length === 0) {
+            return res.status(404).json({ success: false, error: '书籍不存在' });
+        }
+
+        if (books[0].user_id !== req.userId) {
+            return res.status(403).json({ success: false, error: '权限不足，无法将他人的页面发布为模板' });
+        }
+
+        // 2. 调用发布页面模板方法
+        const template = await templateService.publishPageAsTemplate(pageId, {
+            name,
+            templateType,
+            category,
+            tags,
+            thumbnailUrl,
+            coverUrl,
+            visibility: visibility || 'private',
+            creatorId: req.userId!
+        });
+
+        sendSuccess(res, template, '页面发布模板成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * POST /api/templates/:id/use
+ * 增加单页模板的套用次数计数 (供前端在拖入应用模板时调用)
+ */
+router.post('/:id/use', authMiddleware, async (req, res) => {
+    try {
+        const id = req.params.id;
+        await templateService.incrementUseCount(id);
+        sendSuccess(res, null, '模板套用计数成功');
     } catch (error) {
         sendError(res, error as Error);
     }

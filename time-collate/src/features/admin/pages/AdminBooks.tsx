@@ -162,9 +162,6 @@ export function AdminBooks() {
                 <div>
                     <h4 className="text-sm font-black text-slate-900 line-clamp-1">{book.title}</h4>
                     <div className="flex items-center gap-2.5 mt-1.5">
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
-                            {book.theme}
-                        </span>
                         <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
                             规格: {book.pageSize}
                         </span>

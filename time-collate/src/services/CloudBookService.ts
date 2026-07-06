@@ -1,5 +1,5 @@
 import type { IBookService } from './IBookService';
-import type { Book, Photo, PaginatedResponse } from '../types';
+import type { Book, BookCover, Page, Photo, PaginatedResponse } from '../types';
 import axios from 'axios';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -8,35 +8,10 @@ import { useAuthStore } from '../store/useAuthStore';
  * 通过 Axios 与后端交互
  */
 export class CloudBookService implements IBookService {
-    private api;
+    private api = axios;
 
-    constructor(baseUrl: string = '/api') {
-        this.api = axios.create({
-            baseURL: baseUrl,
-        });
-
-        // 核心：绑定请求拦截器以自动注入 Token
-        this.api.interceptors.request.use((config) => {
-            const token = useAuthStore.getState().token;
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-            return config;
-        });
-
-        // 核心：绑定响应拦截器以捕获 401 并自动退出登录
-        this.api.interceptors.response.use(
-            (response) => response,
-            (error) => {
-                if (error.response?.status === 401) {
-                    const { isAuthenticated, logout } = useAuthStore.getState();
-                    if (isAuthenticated) {
-                        logout();
-                    }
-                }
-                return Promise.reject(error);
-            }
-        );
+    constructor(_baseUrl?: string) {
+        // 统一使用全局共享的 axios 实例，避免重复创建实例导致 401 续签重试机制失效
     }
 
     async getBooks(page: number = 1, pageSize: number = 20): Promise<PaginatedResponse<Book>> {
@@ -58,7 +33,7 @@ export class CloudBookService implements IBookService {
         return response.data.data;
     }
 
-    async getBook(id: string): Promise<Book | null> {
+    async getBook(id: string): Promise<{ book: Book; cover: BookCover | null; pages: Page[] } | null> {
         try {
             const response = await this.api.get(`/books/${id}`);
             return response.data.data;
@@ -66,6 +41,25 @@ export class CloudBookService implements IBookService {
             if (error.response?.status === 404) return null;
             throw error;
         }
+    }
+
+    async saveCover(bookId: string, cover: Partial<BookCover>): Promise<BookCover> {
+        const response = await this.api.patch(`/books/${bookId}/cover`, cover);
+        return response.data.data;
+    }
+
+    async savePage(pageId: string, page: Partial<Page>): Promise<Page> {
+        const response = await this.api.patch(`/books/pages/${pageId}`, page);
+        return response.data.data;
+    }
+
+    async addPage(bookId: string, page: Partial<Page>): Promise<{ id: string }> {
+        const response = await this.api.post(`/books/${bookId}/pages`, page);
+        return response.data.data;
+    }
+
+    async deletePage(pageId: string): Promise<void> {
+        await this.api.delete(`/books/pages/${pageId}`);
     }
 
     async saveBook(book: Book): Promise<Book> {
@@ -198,6 +192,71 @@ export class CloudBookService implements IBookService {
     async applyTemplate(templateId: string, title: string): Promise<string> {
         const response = await this.api.post(`/books/templates/${templateId}/apply`, { title });
         return response.data.data.bookId;
+    }
+
+    async updateThumbnail(id: string, coverUrl: string, coverOssKey: string): Promise<void> {
+        await this.api.patch(`/books/${id}/thumbnail`, { coverUrl, coverOssKey });
+    }
+
+    async publishPageTemplate(
+        pageId: string,
+        name: string,
+        templateType: string,
+        category: string,
+        tags: string[],
+        thumbnailUrl: string,
+        coverUrl: string,
+        visibility: string
+    ): Promise<any> {
+        const response = await this.api.post('/templates/publish-page', {
+            pageId,
+            name,
+            templateType,
+            category,
+            tags,
+            thumbnailUrl,
+            coverUrl,
+            visibility
+        });
+        return response.data.data;
+    }
+
+    async usePageTemplate(templateId: string): Promise<void> {
+        await this.api.post(`/templates/${templateId}/use`);
+    }
+
+    async getTemplateCollections(my?: boolean): Promise<any[]> {
+        const response = await this.api.get('/template-collections', {
+            params: { my }
+        });
+        return response.data.data || [];
+    }
+
+    async getMarketTemplateCollections(): Promise<any[]> {
+        const response = await this.api.get('/template-collections/market');
+        return response.data.data || [];
+    }
+
+    async getTemplateCollection(id: string): Promise<any> {
+        const response = await this.api.get(`/template-collections/${id}`);
+        return response.data.data;
+    }
+
+    async saveTemplateCollection(collection: any): Promise<any> {
+        const response = await this.api.post('/template-collections', collection);
+        return response.data.data;
+    }
+
+    async deleteTemplateCollection(id: string): Promise<void> {
+        await this.api.delete(`/template-collections/${id}`);
+    }
+
+    async applyTemplateCollection(collectionId: string, bookId: string, afterPageId: string | null): Promise<string[]> {
+        const response = await this.api.post(`/template-collections/${collectionId}/apply`, {
+            bookId,
+            afterPageId
+        });
+        return response.data.data.pageIds;
     }
 }
 

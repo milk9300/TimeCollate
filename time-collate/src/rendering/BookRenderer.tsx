@@ -17,6 +17,7 @@ import {
 import { STICKER_ASSETS } from './StickerAssets';
 import { useAssetStore } from '../store/useAssetStore';
 import { CanvaSelectionFrame } from '../features/editor/components/CanvaSelectionFrame';
+import { editorFacade } from '../features/editor/runtime/EditorFacade';
 
 interface BookRendererProps {
     page: Page;
@@ -48,6 +49,8 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 }) => {
     const editorMode = useBookStore(state => state.editorMode);
     const updatePage = useBookStore(state => state.updatePage);
+    const setActiveTextEdit = useBookStore(state => state.setActiveTextEdit);
+    const setActivePhotoEdit = useBookStore(state => state.setActivePhotoEdit);
     const assetCache = useAssetStore(state => state.assetCache);
 
     // 氛围与字体解析
@@ -77,8 +80,8 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
     // 获取当前布局对应的模板 Schema，用于磁吸参考点计算
     const templates = useBookStore(state => state.templates || []);
     const template = useMemo(() => {
-        return templates.find(t => t.id === page.layout);
-    }, [templates, page.layout]);
+        return templates.find(t => t.id === page.templateId);
+    }, [templates, page.templateId]);
 
     // 计算页面内所有对齐线磁吸目标百分比坐标
     const snapTargets = useMemo(() => {
@@ -104,10 +107,15 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 
             template.layoutSchema.elements.forEach(el => {
                 const override = overrides[el.id] || {};
-                const elLeft = parseFloat(override.left ?? el.style.left) || 0;
-                const elWidth = parseFloat(override.width ?? el.style.width) || 0;
-                const elTop = parseFloat(override.top ?? el.style.top) || 0;
-                const elHeight = parseFloat(override.height ?? el.style.height) || 0;
+                const rawLeft = override.left ?? (el.x !== undefined ? el.x / 10 : undefined) ?? el.style?.left;
+                const rawWidth = override.width ?? (el.width !== undefined ? el.width / 10 : undefined) ?? el.style?.width;
+                const rawTop = override.top ?? (el.y !== undefined ? el.y / 14.14 : undefined) ?? el.style?.top;
+                const rawHeight = override.height ?? (el.height !== undefined ? el.height / 14.14 : undefined) ?? el.style?.height;
+
+                const elLeft = parseFloat(rawLeft) || 0;
+                const elWidth = parseFloat(rawWidth) || 0;
+                const elTop = parseFloat(rawTop) || 0;
+                const elHeight = parseFloat(rawHeight) || 0;
 
                 const leftPct = innerLeft + (elLeft / 100) * innerWidth;
                 const rightPct = innerLeft + ((elLeft + elWidth) / 100) * innerWidth;
@@ -250,30 +258,24 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeStickerId, decorations, page.content, page.id, activeChapter.id, updatePage, readOnly]);
  
-    // 动态注入自定义字体文件 @font-face
+    // 动态注入自定义字体文件 @font-face (对接 Editor Runtime 统一资源管理系统)
     useEffect(() => {
-        if (!fontFamily || !fontFamily.startsWith('font-')) return;
-        const cachedAsset = assetCache[fontFamily];
-        if (!cachedAsset || !cachedAsset.file_url) return;
+        if (!fontFamily) return;
 
-        const fontId = `font-face-${fontFamily}`;
-        if (document.getElementById(fontId)) return;
+        // 占用资源（计数 +1）
+        editorFacade.acquireResource(fontFamily);
 
-        const style = document.createElement('style');
-        style.id = fontId;
-        style.innerHTML = `
-            @font-face {
-                font-family: '${cachedAsset.name}';
-                src: url('${cachedAsset.file_url}') format('woff2'),
-                     url('${cachedAsset.file_url}') format('woff'),
-                     url('${cachedAsset.file_url}') format('truetype');
-                font-weight: normal;
-                font-style: normal;
-                font-display: swap;
-            }
-        `;
-        document.head.appendChild(style);
-    }, [fontFamily, assetCache]);
+        let isMounted = true;
+        editorFacade.loadResource(fontFamily).catch(err => {
+            console.error(`BookRenderer: Failed to load page font "${fontFamily}":`, err);
+        });
+
+        return () => {
+            isMounted = false;
+            // 释放资源（防抖卸载）
+            editorFacade.releaseResource(fontFamily);
+        };
+    }, [fontFamily]);
 
     // 贴纸拖拽控制逻辑
     const handleStickerMouseDown = (e: React.MouseEvent, dec: Decoration) => {
@@ -424,6 +426,8 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 
     const handlePageClick = () => {
         setActiveStickerId(null);
+        setActiveTextEdit(null);
+        setActivePhotoEdit(null);
     };
 
     const layoutProps = {
@@ -578,7 +582,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
 
                 {/* 4. 动态布局渲染 */}
                 <div className="flex-1 w-full h-full relative z-[5]">
-                    {React.createElement(LayoutRegistry.getRenderer(page.layout), layoutProps)}
+                    {React.createElement(LayoutRegistry.getRenderer(page.templateId), layoutProps)}
                 </div>
 
                 {/* 5. 拖动装饰贴纸渲染 */}
@@ -728,7 +732,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
                 </div>
 
                 {/* 8. 物理书脊、折痕、叠纸阴影与纸张层叠厚度模拟 */}
-                {!isCanvas && page.layout !== 'book-cover' && page.layout !== 'back-cover' && (
+                {!isCanvas && page.templateId !== 'book-cover' && page.templateId !== 'back-cover' && (
                     side === 'left' ? (
                         <>
                             <div className="absolute right-0 inset-y-0 w-16 bg-gradient-to-l from-black/[0.08] via-black/[0.03] to-transparent pointer-events-none z-[15] print:hidden" />

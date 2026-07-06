@@ -62,14 +62,44 @@ function mapAssetToLegacy(row: any) {
  */
 router.get('/folders', async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            `SELECT id, name, parent_id, scope, creator_id, icon, sort_order, created_at
-             FROM asset_folders
-             WHERE creator_id = ? OR scope = 'system'
-             ORDER BY sort_order ASC, name ASC`,
-            [req.userId]
-        );
-        sendSuccess(res, rows);
+        const scope = (req.query.scope as string) || 'user';
+        let folders: any[] = [];
+
+        // 1. 查询用户自建的文件夹目录
+        if (scope === 'user' || scope === 'all') {
+            const [userFolders]: any = await pool.query(
+                `SELECT id, name, parent_id, 'user' as scope, user_id as creator_id, NULL as icon, sort_order, created_at
+                 FROM user_asset_folders
+                 WHERE user_id = ?
+                 ORDER BY sort_order ASC, name ASC`,
+                [req.userId]
+            );
+            folders = folders.concat(userFolders);
+        }
+
+        // 2. 查询系统素材中所有去重后的分类，并在内存中构造系统级虚拟文件夹
+        if (scope === 'system' || scope === 'all') {
+            const [sysCategories]: any = await pool.query(
+                `SELECT DISTINCT type, category FROM system_materials WHERE category IS NOT NULL`
+            );
+            
+            const systemVirtualFolders = sysCategories.map((c: any) => {
+                const virtualId = `sys-virtual-${c.type}-${c.category}`;
+                return {
+                    id: virtualId,
+                    name: c.category,
+                    parent_id: null,
+                    scope: 'system',
+                    creator_id: null,
+                    icon: c.type === 'font' ? 'font' : 'smile',
+                    sort_order: 100,
+                    created_at: Date.now()
+                };
+            });
+            folders = folders.concat(systemVirtualFolders);
+        }
+
+        sendSuccess(res, folders);
     } catch (error) {
         sendError(res, error as Error);
     }
@@ -89,16 +119,13 @@ router.post('/folders', async (req, res) => {
         // 校验 parentId 是否合法
         if (parentId) {
             const [parent]: any = await pool.query(
-                'SELECT id, scope, creator_id FROM asset_folders WHERE id = ?',
+                'SELECT id, user_id FROM user_asset_folders WHERE id = ?',
                 [parentId]
             );
             if (parent.length === 0) {
                 return sendBadRequest(res, 'Parent folder does not exist');
             }
-            if (parent[0].scope === 'system') {
-                return sendError(res, 'Cannot create user subfolder under system folder', 403);
-            }
-            if (parent[0].creator_id !== req.userId) {
+            if (parent[0].user_id !== req.userId) {
                 return sendError(res, 'No permission to modify this parent folder', 403);
             }
         }
@@ -106,8 +133,8 @@ router.post('/folders', async (req, res) => {
         const id = uuidv4();
         const createdAt = Date.now();
         await pool.query(
-            `INSERT INTO asset_folders (id, name, parent_id, scope, creator_id, created_at)
-             VALUES (?, ?, ?, 'user', ?, ?)`,
+            `INSERT INTO user_asset_folders (id, name, parent_id, user_id, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
             [id, name, parentId || null, req.userId, createdAt]
         );
 
@@ -128,13 +155,13 @@ router.patch('/folders/:id', async (req, res) => {
 
         // 校验文件夹归属
         const [folder]: any = await pool.query(
-            'SELECT id, creator_id, scope FROM asset_folders WHERE id = ?',
+            'SELECT id, user_id FROM user_asset_folders WHERE id = ?',
             [id]
         );
         if (folder.length === 0) {
             return sendNotFound(res, 'Folder not found');
         }
-        if (folder[0].scope === 'system' || folder[0].creator_id !== req.userId) {
+        if (folder[0].user_id !== req.userId) {
             return sendError(res, 'Permission denied', 403);
         }
 
@@ -148,9 +175,9 @@ router.patch('/folders/:id', async (req, res) => {
                 // 检查 parentId 是否是当前文件夹下的子文件夹 (利用递归查询)
                 const [descendants]: any = await pool.query(
                     `WITH RECURSIVE subfolders AS (
-                        SELECT id FROM asset_folders WHERE id = ?
+                        SELECT id FROM user_asset_folders WHERE id = ?
                         UNION ALL
-                        SELECT f.id FROM asset_folders f
+                        SELECT f.id FROM user_asset_folders f
                         INNER JOIN subfolders s ON f.parent_id = s.id
                      )
                      SELECT id FROM subfolders`,
@@ -164,13 +191,13 @@ router.patch('/folders/:id', async (req, res) => {
 
                 // 检查目标父文件夹的归属
                 const [parent]: any = await pool.query(
-                    'SELECT id, creator_id FROM asset_folders WHERE id = ?',
+                    'SELECT id, user_id FROM user_asset_folders WHERE id = ?',
                     [parentId]
                 );
                 if (parent.length === 0) {
                     return sendBadRequest(res, 'Target parent folder not found');
                 }
-                if (parent[0].creator_id !== req.userId) {
+                if (parent[0].user_id !== req.userId) {
                     return sendError(res, 'No permission to target parent folder', 403);
                 }
             }
@@ -199,7 +226,7 @@ router.patch('/folders/:id', async (req, res) => {
 
         updateParams.push(id);
         await pool.query(
-            `UPDATE asset_folders SET ${updateFields.join(', ')} WHERE id = ?`,
+            `UPDATE user_asset_folders SET ${updateFields.join(', ')} WHERE id = ?`,
             updateParams
         );
 
@@ -221,22 +248,22 @@ router.delete('/folders/:id', async (req, res) => {
 
         // 校验目标文件夹归属
         const [folder]: any = await connection.query(
-            'SELECT id, creator_id, scope FROM asset_folders WHERE id = ?',
+            'SELECT id, user_id FROM user_asset_folders WHERE id = ?',
             [id]
         );
         if (folder.length === 0) {
             return sendNotFound(res, 'Folder not found');
         }
-        if (folder[0].scope === 'system' || folder[0].creator_id !== req.userId) {
+        if (folder[0].user_id !== req.userId) {
             return sendError(res, 'Permission denied', 403);
         }
 
         // 1. 递归查询所有子文件夹 ID
         const [descendants]: any = await connection.query(
             `WITH RECURSIVE subfolders AS (
-                SELECT id FROM asset_folders WHERE id = ?
+                SELECT id FROM user_asset_folders WHERE id = ?
                 UNION ALL
-                SELECT f.id FROM asset_folders f
+                SELECT f.id FROM user_asset_folders f
                 INNER JOIN subfolders s ON f.parent_id = s.id
              )
              SELECT id FROM subfolders`,
@@ -246,7 +273,7 @@ router.delete('/folders/:id', async (req, res) => {
 
         // 2. 查询这些文件夹下的所有资产 (用于清理 OSS 实体文件)
         const [assets]: any = await connection.query(
-            'SELECT id, oss_key FROM assets WHERE folder_id IN (?)',
+            'SELECT id, oss_key FROM user_assets WHERE folder_id IN (?)',
             [subfolderIds]
         );
 
@@ -255,13 +282,12 @@ router.delete('/folders/:id', async (req, res) => {
         // 3. 删除数据库中的资产与关联关系
         if (assets.length > 0) {
             const assetIds = assets.map((a: any) => a.id);
-            await connection.query('DELETE FROM asset_tag_relations WHERE asset_id IN (?)', [assetIds]);
-            await connection.query('DELETE FROM asset_favorites WHERE asset_id IN (?)', [assetIds]);
-            await connection.query('DELETE FROM assets WHERE id IN (?)', [assetIds]);
+            await connection.query('DELETE FROM user_asset_tag_relations WHERE asset_id IN (?)', [assetIds]);
+            await connection.query('DELETE FROM user_assets WHERE id IN (?)', [assetIds]);
         }
 
         // 4. 删除文件夹数据记录
-        await connection.query('DELETE FROM asset_folders WHERE id IN (?)', [subfolderIds]);
+        await connection.query('DELETE FROM user_asset_folders WHERE id IN (?)', [subfolderIds]);
 
         await connection.commit();
 
@@ -291,7 +317,7 @@ router.delete('/folders/:id', async (req, res) => {
  */
 router.get('/materials', async (req, res) => {
     try {
-        const folderId = req.query.folderId as string; // 'root' 代表根目录，或为空，或具体UUID
+        const folderId = req.query.folderId as string; // 'root' 代表根目录，或为空，或具体UUID，或虚拟ID sys-virtual-
         let type = req.query.type as string; // 'photo', 'sticker', 'background', etc.
         const tag = req.query.tag as string; // 标签名过滤
         const favorite = req.query.favorite === 'true'; // 只看收藏
@@ -299,91 +325,397 @@ router.get('/materials', async (req, res) => {
         const page = parseInt(req.query.page as string) || 1;
         const pageSize = parseInt(req.query.pageSize as string) || 24;
         const offset = (page - 1) * pageSize;
+        const scope = (req.query.scope as string) || 'user';
 
         // 兼容映射：前端传 decorator 时转为新字段 decoration
         if (type === 'decorator') {
             type = 'decoration';
         }
 
-        const whereClauses = ['(m.user_id = ? OR m.user_id IS NULL)'];
-        const queryParams: any[] = [req.userId];
+        let items: any = [];
+        let total = 0;
 
-        // 文件夹过滤
-        if (folderId === 'root') {
-            whereClauses.push('m.folder_id IS NULL');
-        } else if (folderId) {
-            whereClauses.push('m.folder_id = ?');
-            queryParams.push(folderId);
-        }
+        if (scope === 'user') {
+            // ==================== A. 只查询用户自建文件夹下的资产 (user_assets) ====================
+            const whereClauses = ['m.user_id = ?'];
+            const queryParams: any[] = [req.userId];
 
-        // 类别过滤
-        if (type) {
-            whereClauses.push('m.type = ?');
-            queryParams.push(type);
-        }
+            if (folderId) {
+                if (folderId === 'root') {
+                    whereClauses.push('m.folder_id IS NULL');
+                } else if (!folderId.startsWith('sys-virtual-')) {
+                    whereClauses.push('m.folder_id = ?');
+                    queryParams.push(folderId);
+                } else {
+                    whereClauses.push('1=0'); // 如果是系统虚拟文件夹，在 user 模式下查不到任何东西
+                }
+            }
 
-        // 模糊搜索
-        if (search) {
-            whereClauses.push('m.name LIKE ?');
-            queryParams.push(`%${search}%`);
-        }
+            if (type) {
+                whereClauses.push('m.type = ?');
+                queryParams.push(type);
+            }
 
-        // 收藏夹过滤
-        if (favorite) {
-            whereClauses.push('fav.user_id IS NOT NULL');
-        }
+            if (search) {
+                whereClauses.push('m.name LIKE ?');
+                queryParams.push(`%${search}%`);
+            }
 
-        // 标签过滤
-        if (tag) {
-            whereClauses.push('t.name = ?');
-            queryParams.push(tag);
-        }
-
-        // 查询 SQL 拼接
-        let selectSql = `
-            SELECT DISTINCT m.id, m.folder_id, m.name, m.type, m.user_id,
-                            m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
-                            IF(fav.user_id IS NOT NULL, 1, 0) as is_favorite
-            FROM assets m
-            LEFT JOIN asset_favorites fav ON m.id = fav.asset_id AND fav.user_id = ?
-        `;
-        queryParams.unshift(req.userId); // 对应 LEFT JOIN fav 中的占位符
-
-        if (tag) {
-            selectSql += `
-                INNER JOIN asset_tag_relations r ON m.id = r.asset_id
-                INNER JOIN asset_tags t ON r.tag_id = t.id
+            let selectSql = `
+                SELECT DISTINCT m.id, m.folder_id, m.name, m.type, m.user_id,
+                                m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                0 as is_favorite
+                FROM user_assets m
             `;
-        }
 
-        selectSql += ` WHERE ${whereClauses.join(' AND ')} ORDER BY m.created_at DESC LIMIT ? OFFSET ?`;
-        queryParams.push(pageSize, offset);
+            if (tag) {
+                selectSql += `
+                    INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                    INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                `;
+                whereClauses.push('t.name = ?');
+                queryParams.push(tag);
+            }
 
-        const [items]: any = await pool.query(selectSql, queryParams);
+            selectSql += ` WHERE ${whereClauses.join(' AND ')} ORDER BY m.created_at DESC LIMIT ? OFFSET ?`;
+            
+            const countParams = [...queryParams];
+            queryParams.push(pageSize, offset);
+            [items] = await pool.query(selectSql, queryParams);
 
-        // 统计总数用于前端分页计算
-        let countSql = 'SELECT COUNT(DISTINCT m.id) as total FROM assets m';
-        const countParams = [...queryParams];
-        // 剥离 LIMIT 和 OFFSET 参数以及 fav.user_id
-        countParams.splice(0, 1); // 剥离 LEFT JOIN 占位符
-        countParams.splice(countParams.length - 2, 2); // 剥离 LIMIT & OFFSET
+            // 统计总数
+            let countSql = 'SELECT COUNT(DISTINCT m.id) as total FROM user_assets m';
+            if (tag) {
+                countSql += `
+                    INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                    INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                `;
+            }
+            countSql += ` WHERE ${whereClauses.join(' AND ')}`;
+            const [countResult]: any = await pool.query(countSql, countParams);
+            total = countResult[0].total;
 
-        if (tag) {
-            countSql += `
-                INNER JOIN asset_tag_relations r ON m.id = r.asset_id
-                INNER JOIN asset_tags t ON r.tag_id = t.id
+        } else if (scope === 'system') {
+            // ==================== B. 只查询系统官方素材 (system_materials) ====================
+            const whereClauses = ['1=1'];
+            const queryParams: any[] = [req.userId]; // 用于 LEFT JOIN fav.user_id = ?
+
+            // 如果是在系统模式下点击了某个分类文件夹，解析其类别
+            let systemCategory: string | null = null;
+            if (folderId && folderId.startsWith('sys-virtual-')) {
+                const parts = folderId.split('-');
+                if (parts.length >= 4) {
+                    systemCategory = parts.slice(3).join('-');
+                }
+            }
+
+            if (systemCategory) {
+                whereClauses.push('m.category = ?');
+                queryParams.push(systemCategory);
+            }
+            if (type) {
+                whereClauses.push('m.type = ?');
+                queryParams.push(type);
+            }
+            if (search) {
+                whereClauses.push('m.name LIKE ?');
+                queryParams.push(`%${search}%`);
+            }
+            if (tag) {
+                whereClauses.push('JSON_CONTAINS(m.tags, JSON_ARRAY(?))');
+                queryParams.push(tag);
+            }
+            if (favorite) {
+                whereClauses.push('fav.user_id IS NOT NULL');
+            }
+
+            const selectSql = `
+                SELECT DISTINCT m.id, NULL as folder_id, m.name, m.type, NULL as user_id,
+                                m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                IF(fav.user_id IS NOT NULL, 1, 0) as is_favorite
+                FROM system_materials m
+                LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                WHERE ${whereClauses.join(' AND ')}
+                ORDER BY m.created_at DESC
+                LIMIT ? OFFSET ?
             `;
-        }
+            const countParams = [...queryParams];
+            queryParams.push(pageSize, offset);
+            [items] = await pool.query(selectSql, queryParams);
 
-        const countClauses = [...whereClauses];
-        if (favorite) {
-            countSql += ` LEFT JOIN asset_favorites fav ON m.id = fav.asset_id AND fav.user_id = ?`;
-            countParams.unshift(req.userId);
-        }
+            // 统计总数
+            const countSql = `
+                SELECT COUNT(DISTINCT m.id) as total
+                FROM system_materials m
+                LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                WHERE ${whereClauses.join(' AND ')}
+            `;
+            const [countResult]: any = await pool.query(countSql, countParams);
+            total = countResult[0].total;
 
-        countSql += ` WHERE ${countClauses.join(' AND ')}`;
-        const [countResult]: any = await pool.query(countSql, countParams);
-        const total = countResult[0].total;
+        } else {
+            // ==================== C. 混合拉取 (all 兼容模式) ====================
+            // 1. 判断是否为系统虚拟分类目录
+            let isSystemQuery = false;
+            let systemCategory: string | null = null;
+            if (folderId && folderId.startsWith('sys-virtual-')) {
+                isSystemQuery = true;
+                const parts = folderId.split('-');
+                if (parts.length >= 4) {
+                    systemCategory = parts.slice(3).join('-');
+                }
+            }
+
+            if (isSystemQuery) {
+                // 只查询系统素材
+                const whereClauses = ['1=1'];
+                const queryParams: any[] = [req.userId];
+
+                if (systemCategory) {
+                    whereClauses.push('m.category = ?');
+                    queryParams.push(systemCategory);
+                }
+                if (type) {
+                    whereClauses.push('m.type = ?');
+                    queryParams.push(type);
+                }
+                if (search) {
+                    whereClauses.push('m.name LIKE ?');
+                    queryParams.push(`%${search}%`);
+                }
+                if (tag) {
+                    whereClauses.push('JSON_CONTAINS(m.tags, JSON_ARRAY(?))');
+                    queryParams.push(tag);
+                }
+                if (favorite) {
+                    whereClauses.push('fav.user_id IS NOT NULL');
+                }
+
+                const selectSql = `
+                    SELECT DISTINCT m.id, NULL as folder_id, m.name, m.type, NULL as user_id,
+                                    m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                    IF(fav.user_id IS NOT NULL, 1, 0) as is_favorite
+                    FROM system_materials m
+                    LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                    WHERE ${whereClauses.join(' AND ')}
+                    ORDER BY m.created_at DESC
+                    LIMIT ? OFFSET ?
+                `;
+                queryParams.push(pageSize, offset);
+                [items] = await pool.query(selectSql, queryParams);
+
+                const countParams = [...queryParams];
+                countParams.splice(countParams.length - 2, 2);
+                const countSql = `
+                    SELECT COUNT(DISTINCT m.id) as total
+                    FROM system_materials m
+                    LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                    WHERE ${whereClauses.join(' AND ')}
+                `;
+                const [countResult]: any = await pool.query(countSql, countParams);
+                total = countResult[0].total;
+
+            } else if (folderId && folderId !== 'root') {
+                // 只查询用户自建文件夹下的资产
+                const whereClauses = ['m.user_id = ?', 'm.folder_id = ?'];
+                const queryParams: any[] = [req.userId, folderId];
+
+                if (type) {
+                    whereClauses.push('m.type = ?');
+                    queryParams.push(type);
+                }
+                if (search) {
+                    whereClauses.push('m.name LIKE ?');
+                    queryParams.push(`%${search}%`);
+                }
+
+                let selectSql = `
+                    SELECT DISTINCT m.id, m.folder_id, m.name, m.type, m.user_id,
+                                    m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                    0 as is_favorite
+                    FROM user_assets m
+                `;
+
+                if (tag) {
+                    selectSql += `
+                        INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                        INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                    `;
+                    whereClauses.push('t.name = ?');
+                    queryParams.push(tag);
+                }
+
+                selectSql += ` WHERE ${whereClauses.join(' AND ')} ORDER BY m.created_at DESC LIMIT ? OFFSET ?`;
+                queryParams.push(pageSize, offset);
+                [items] = await pool.query(selectSql, queryParams);
+
+                const countParams = [...queryParams];
+                countParams.splice(countParams.length - 2, 2);
+                let countSql = 'SELECT COUNT(DISTINCT m.id) as total FROM user_assets m';
+                if (tag) {
+                    countSql += `
+                        INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                        INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                    `;
+                }
+                countSql += ` WHERE ${whereClauses.join(' AND ')}`;
+                const [countResult]: any = await pool.query(countSql, countParams);
+                total = countResult[0].total;
+
+            } else {
+                // 混合拉取
+                if (type === 'photo') {
+                    const whereClauses = ['m.user_id = ?', 'm.type = "photo"'];
+                    const queryParams: any[] = [req.userId];
+                    
+                    if (folderId === 'root') {
+                        whereClauses.push('m.folder_id IS NULL');
+                    }
+                    if (search) {
+                        whereClauses.push('m.name LIKE ?');
+                        queryParams.push(`%${search}%`);
+                    }
+
+                    let selectSql = `
+                        SELECT DISTINCT m.id, m.folder_id, m.name, m.type, m.user_id,
+                                        m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                        0 as is_favorite
+                        FROM user_assets m
+                    `;
+
+                    if (tag) {
+                        selectSql += `
+                            INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                            INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                        `;
+                        whereClauses.push('t.name = ?');
+                        queryParams.push(tag);
+                    }
+
+                    selectSql += ` WHERE ${whereClauses.join(' AND ')} ORDER BY m.created_at DESC LIMIT ? OFFSET ?`;
+                    queryParams.push(pageSize, offset);
+                    [items] = await pool.query(selectSql, queryParams);
+
+                    const countParams = [...queryParams];
+                    countParams.splice(countParams.length - 2, 2);
+                    let countSql = 'SELECT COUNT(DISTINCT m.id) as total FROM user_assets m';
+                    if (tag) {
+                        countSql += `
+                            INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                            INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                        `;
+                    }
+                    countSql += ` WHERE ${whereClauses.join(' AND ')}`;
+                    const [countResult]: any = await pool.query(countSql, countParams);
+                    total = countResult[0].total;
+                } else {
+                    const userWhere = ['m.user_id = ?'];
+                    const userParams: any[] = [req.userId];
+                    const sysWhere = ['1=1'];
+                    const sysParams: any[] = [req.userId];
+
+                    if (folderId === 'root') {
+                        userWhere.push('m.folder_id IS NULL');
+                    }
+                    if (type) {
+                        userWhere.push('m.type = ?');
+                        userParams.push(type);
+                        sysWhere.push('m.type = ?');
+                        sysParams.push(type);
+                    }
+                    if (search) {
+                        userWhere.push('m.name LIKE ?');
+                        userParams.push(`%${search}%`);
+                        sysWhere.push('m.name LIKE ?');
+                        sysParams.push(`%${search}%`);
+                    }
+                    
+                    let userTagJoin = '';
+                    if (tag) {
+                        userTagJoin = `
+                            INNER JOIN user_asset_tag_relations r ON m.id = r.asset_id
+                            INNER JOIN user_asset_tags t ON r.tag_id = t.id
+                        `;
+                        userWhere.push('t.name = ?');
+                        userParams.push(tag);
+
+                        sysWhere.push('JSON_CONTAINS(m.tags, JSON_ARRAY(?))');
+                        sysParams.push(tag);
+                    }
+
+                    let unionSql = '';
+                    const queryParams: any[] = [];
+                    
+                    if (favorite) {
+                        sysWhere.push('fav.user_id IS NOT NULL');
+                        
+                        unionSql = `
+                            SELECT DISTINCT m.id, NULL as folder_id, m.name, m.type, NULL as user_id,
+                                            m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                            IF(fav.user_id IS NOT NULL, 1, 0) as is_favorite
+                            FROM system_materials m
+                            LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                            WHERE ${sysWhere.join(' AND ')}
+                            ORDER BY created_at DESC LIMIT ? OFFSET ?
+                        `;
+                        queryParams.push(...sysParams, pageSize, offset);
+                    } else {
+                        unionSql = `
+                            (
+                                SELECT DISTINCT m.id, m.folder_id, m.name, m.type, m.user_id,
+                                                m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                                0 as is_favorite
+                                FROM user_assets m
+                                ${userTagJoin}
+                                WHERE ${userWhere.join(' AND ')}
+                            )
+                            UNION ALL
+                            (
+                                SELECT DISTINCT m.id, NULL as folder_id, m.name, m.type, NULL as user_id,
+                                                m.url, m.thumbnail, m.oss_key, m.size, m.width, m.height, m.metadata, m.created_at,
+                                                IF(fav.user_id IS NOT NULL, 1, 0) as is_favorite
+                                FROM system_materials m
+                                LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                                WHERE ${sysWhere.join(' AND ')}
+                            )
+                            ORDER BY created_at DESC LIMIT ? OFFSET ?
+                        `;
+                        queryParams.push(...userParams, ...sysParams, pageSize, offset);
+                    }
+
+                    [items] = await pool.query(unionSql, queryParams);
+
+                    let countSql = '';
+                    const countParams: any[] = [];
+                    if (favorite) {
+                        countSql = `
+                            SELECT COUNT(DISTINCT m.id) as total
+                            FROM system_materials m
+                            LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                            WHERE ${sysWhere.join(' AND ')}
+                        `;
+                        countParams.push(...sysParams);
+                    } else {
+                        countSql = `
+                            SELECT (
+                                SELECT COUNT(DISTINCT m.id)
+                                FROM user_assets m
+                                ${userTagJoin}
+                                WHERE ${userWhere.join(' AND ')}
+                            ) + (
+                                SELECT COUNT(DISTINCT m.id)
+                                FROM system_materials m
+                                LEFT JOIN user_material_favorites fav ON m.id = fav.material_id AND fav.user_id = ?
+                                WHERE ${sysWhere.join(' AND ')}
+                            ) as total
+                        `;
+                        countParams.push(...userParams, ...sysParams);
+                    }
+                    const [countResult]: any = await pool.query(countSql, countParams);
+                    total = countResult[0].total;
+                }
+            }
+        }
 
         // 对所有私有 OSS 键文件进行签名，并封装向下兼容结构
         const legacyItems = items.map((item: any) => {
@@ -433,7 +765,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
 
         // 1. 容量空间校验（限额 500MB）
         const [quota]: any = await connection.query(
-            'SELECT SUM(size) as used FROM assets WHERE user_id = ?',
+            'SELECT SUM(size) as used FROM user_assets WHERE user_id = ?',
             [req.userId]
         );
         const currentUsed = quota[0].used ? parseInt(quota[0].used) : 0;
@@ -478,9 +810,9 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
             mimeType: req.file.mimetype,
         };
 
-        // 4. 插入资产表
+        // 4. 插入用户资产表
         await connection.query(
-            `INSERT INTO assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
+            `INSERT INTO user_assets (id, folder_id, name, type, user_id, url, thumbnail, oss_key, size, width, height, metadata, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [id, folderId || null, req.file.originalname, type, req.userId, fileUrl, null, ossKey, processedBuffer.length, width || null, height || null, JSON.stringify(metadata), createdAt]
         );
@@ -488,30 +820,28 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
         // 如果是照片，自动建立一笔空白照片元数据
         if (type === 'photo') {
             await connection.query(
-                `INSERT INTO photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
+                `INSERT INTO user_photo_metadata (id, asset_id, ai_tags) VALUES (?, ?, '[]')`,
                 [uuidv4(), id]
             );
         }
 
-        // 5. 绑定或创建对应标签
+        // 5. 绑定或创建对应用户标签
         if (Array.isArray(tags) && tags.length > 0) {
             for (const tagName of tags) {
                 if (!tagName) continue;
                 
-                // 写入用户标签
                 await connection.query(
-                    'INSERT IGNORE INTO asset_tags (id, name, scope, creator_id) VALUES (?, ?, "user", ?)',
+                    'INSERT IGNORE INTO user_asset_tags (id, name, user_id) VALUES (?, ?, ?)',
                     [uuidv4(), tagName, req.userId]
                 );
 
-                // 查询标签真实 ID
                 const [tRows]: any = await connection.query(
-                    'SELECT id FROM asset_tags WHERE name = ?',
-                    [tagName]
+                    'SELECT id FROM user_asset_tags WHERE name = ? AND user_id = ?',
+                    [tagName, req.userId]
                 );
                 if (tRows.length > 0) {
                     await connection.query(
-                        'INSERT IGNORE INTO asset_tag_relations (asset_id, tag_id) VALUES (?, ?)',
+                        'INSERT IGNORE INTO user_asset_tag_relations (asset_id, tag_id) VALUES (?, ?)',
                         [id, tRows[0].id]
                     );
                 }
@@ -550,7 +880,7 @@ router.patch('/materials/:id', async (req, res) => {
 
         // 验证所有权
         const [material]: any = await pool.query(
-            'SELECT id, user_id FROM assets WHERE id = ?',
+            'SELECT id, user_id FROM user_assets WHERE id = ?',
             [id]
         );
         if (material.length === 0) {
@@ -563,13 +893,13 @@ router.patch('/materials/:id', async (req, res) => {
         // 验证目标文件夹所有权
         if (folderId !== undefined && folderId !== null) {
             const [folder]: any = await pool.query(
-                'SELECT id, creator_id FROM asset_folders WHERE id = ?',
+                'SELECT id, user_id FROM user_asset_folders WHERE id = ?',
                 [folderId]
             );
             if (folder.length === 0) {
                 return sendBadRequest(res, 'Target folder not found');
             }
-            if (folder[0].creator_id !== req.userId) {
+            if (folder[0].user_id !== req.userId) {
                 return sendError(res, 'No permission to target folder', 403);
             }
         }
@@ -592,7 +922,7 @@ router.patch('/materials/:id', async (req, res) => {
 
         updateParams.push(id);
         await pool.query(
-            `UPDATE assets SET ${updateFields.join(', ')} WHERE id = ?`,
+            `UPDATE user_assets SET ${updateFields.join(', ')} WHERE id = ?`,
             updateParams
         );
 
@@ -612,7 +942,7 @@ router.delete('/materials/:id', async (req, res) => {
 
         // 验证所有权
         const [material]: any = await pool.query(
-            'SELECT id, user_id, oss_key FROM assets WHERE id = ?',
+            'SELECT id, user_id, oss_key FROM user_assets WHERE id = ?',
             [id]
         );
         if (material.length === 0) {
@@ -622,10 +952,9 @@ router.delete('/materials/:id', async (req, res) => {
             return sendError(res, 'Permission denied', 403);
         }
 
-        // 删除数据库关联 (cascade 会自动清理 photo_metadata)
-        await pool.query('DELETE FROM asset_tag_relations WHERE asset_id = ?', [id]);
-        await pool.query('DELETE FROM asset_favorites WHERE asset_id = ?', [id]);
-        await pool.query('DELETE FROM assets WHERE id = ?', [id]);
+        // 删除数据库关联 (cascade 会自动清理 user_photo_metadata)
+        await pool.query('DELETE FROM user_asset_tag_relations WHERE asset_id = ?', [id]);
+        await pool.query('DELETE FROM user_assets WHERE id = ?', [id]);
 
         // 异步物理清除云存储中的文件，避免 DB 延迟
         if (material[0].oss_key) {
@@ -653,7 +982,7 @@ router.post('/materials/batch-delete', async (req, res) => {
 
         // 查出所有属于当前用户且非系统预设的素材，获取其 oss_key
         const [assets]: any = await pool.query(
-            'SELECT id, oss_key FROM assets WHERE id IN (?) AND user_id = ?',
+            'SELECT id, oss_key FROM user_assets WHERE id IN (?) AND user_id = ?',
             [ids, req.userId]
         );
 
@@ -664,9 +993,8 @@ router.post('/materials/batch-delete', async (req, res) => {
         const validIds = assets.map((m: any) => m.id);
 
         // 删除数据库关联
-        await pool.query('DELETE FROM asset_tag_relations WHERE asset_id IN (?)', [validIds]);
-        await pool.query('DELETE FROM asset_favorites WHERE asset_id IN (?)', [validIds]);
-        await pool.query('DELETE FROM assets WHERE id IN (?)', [validIds]);
+        await pool.query('DELETE FROM user_asset_tag_relations WHERE asset_id IN (?)', [validIds]);
+        await pool.query('DELETE FROM user_assets WHERE id IN (?)', [validIds]);
 
         // 异步物理清除云存储中的文件
         assets.forEach((m: any) => {
@@ -699,20 +1027,20 @@ router.post('/materials/batch-move', async (req, res) => {
         // 验证目标文件夹所有权
         if (targetFolderId !== null) {
             const [folder]: any = await pool.query(
-                'SELECT id, creator_id FROM asset_folders WHERE id = ?',
+                'SELECT id, user_id FROM user_asset_folders WHERE id = ?',
                 [targetFolderId]
             );
             if (folder.length === 0) {
                 return sendBadRequest(res, 'Target folder not found');
             }
-            if (folder[0].creator_id !== req.userId) {
+            if (folder[0].user_id !== req.userId) {
                 return sendError(res, 'No permission to target folder', 403);
             }
         }
 
         // 过滤出属于当前用户且非系统预设的素材
         const [assets]: any = await pool.query(
-            'SELECT id FROM assets WHERE id IN (?) AND user_id = ?',
+            'SELECT id FROM user_assets WHERE id IN (?) AND user_id = ?',
             [ids, req.userId]
         );
 
@@ -723,7 +1051,7 @@ router.post('/materials/batch-move', async (req, res) => {
         const validIds = assets.map((m: any) => m.id);
 
         await pool.query(
-            'UPDATE assets SET folder_id = ? WHERE id IN (?)',
+            'UPDATE user_assets SET folder_id = ? WHERE id IN (?)',
             [targetFolderId, validIds]
         );
 
@@ -744,7 +1072,7 @@ router.post('/materials/batch-move', async (req, res) => {
 router.get('/storage-quota', async (req, res) => {
     try {
         const [quota]: any = await pool.query(
-            'SELECT SUM(size) as used FROM assets WHERE user_id = ?',
+            'SELECT SUM(size) as used FROM user_assets WHERE user_id = ?',
             [req.userId]
         );
         const used = quota[0].used ? parseInt(quota[0].used) : 0;
@@ -768,8 +1096,18 @@ router.post('/materials/:id/favorite', async (req, res) => {
     try {
         const { id } = req.params;
         const createdAt = Date.now();
+
+        // 零信任防护：验证要收藏的素材是否确实在系统素材库中
+        const [exists]: any = await pool.query(
+            'SELECT id FROM system_materials WHERE id = ?',
+            [id]
+        );
+        if (exists.length === 0) {
+            return sendError(res, 'System material not found or not eligible for favorite', 404);
+        }
+
         await pool.query(
-            'INSERT IGNORE INTO asset_favorites (user_id, asset_id, created_at) VALUES (?, ?, ?)',
+            'INSERT IGNORE INTO user_material_favorites (user_id, material_id, created_at) VALUES (?, ?, ?)',
             [req.userId, id, createdAt]
         );
         sendSuccess(res, null, 'Added to favorites');
@@ -786,7 +1124,7 @@ router.delete('/materials/:id/favorite', async (req, res) => {
     try {
         const { id } = req.params;
         await pool.query(
-            'DELETE FROM asset_favorites WHERE user_id = ? AND asset_id = ?',
+            'DELETE FROM user_material_favorites WHERE user_id = ? AND material_id = ?',
             [req.userId, id]
         );
         sendSuccess(res, null, 'Removed from favorites');

@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useBookStore, getVirtualChapters } from '../../../store';
+import { useBookStore, getVirtualChapters, useConvertedPages } from '../../../store';
 import { useMarketStore } from '../../../store/useMarketStore';
+import { editorFacade } from '../runtime/EditorFacade';
+import { UpdatePageCommand } from '../runtime/services/UpdatePageCommand';
 import { CustomAssetBrowser } from './CustomAssetBrowser';
 import { AccordionSection } from './AccordionSection';
 import { getBookService } from '../../../services/serviceFactory';
 import { PAGE_SIZES, type PageSize } from '../../../rendering/PhysicalConstants';
-import { PREFACE_TEMPLATES, compilePrefaceText } from '../../../rendering/constants/prefaceTemplates';
 import {
     Settings,
     Sliders,
@@ -94,10 +95,10 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
         setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
     }, []);
 
+    const pages = useConvertedPages();
     const chapters = useMemo(() => {
-        if (!currentBook || !currentBook.pages) return [];
-        return getVirtualChapters(currentBook.pages);
-    }, [currentBook]);
+        return getVirtualChapters(pages);
+    }, [pages]);
 
     const activeChapter = chapters.find(c => c.id === activeChapterId) || null;
     const activePage = activeChapter?.pages.find(p => p.id === activePageId) || null;
@@ -123,7 +124,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
         const page = chapter?.pages.find(p => p.id === activeTextEdit.pageId);
         if (!page) return null;
 
-        const template = templates.find((t) => t.id === page.layout);
+        const template = templates.find((t) => t.id === page.templateId);
         const element = template?.layoutSchema.elements.find(e => e.id === activeTextEdit.slotId);
 
         return {
@@ -152,7 +153,18 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
             content = updateSlotStyle(content, slotId, updates.style);
         }
 
-        updatePage(chapterId, pageId, { content });
+        const isCommandMode = useBookStore.getState().enableCommandHistory;
+        if (isCommandMode) {
+            const command = new UpdatePageCommand(
+                chapterId,
+                pageId,
+                { content: page.content || '' },
+                { content }
+            );
+            editorFacade.execute(command);
+        } else {
+            updatePage(chapterId, pageId, { content });
+        }
     }, [activeTextEdit, currentBook, updatePage, chapters]);
 
     const marketTemplates = useMarketStore(state => state.marketTemplates);
@@ -168,7 +180,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
 
         if (activeTextEdit) {
             elementId = activeTextEdit.slotId;
-            const template = allTemplates.find((t) => t.id === activePage.layout);
+            const template = allTemplates.find((t) => t.id === activePage.templateId);
             const element = template?.layoutSchema.elements.find(e => e.id === elementId);
             if (element) {
                 defaultLeft = element.style.left || '0%';
@@ -177,7 +189,7 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
         } else if (activePhotoEdit) {
             const photo = activePage.photos.find(p => p.id === activePhotoEdit.photoId);
             const slotIndex = photo?.slotIndex ?? 0;
-            const template = allTemplates.find((t) => t.id === activePage.layout);
+            const template = allTemplates.find((t) => t.id === activePage.templateId);
             const element = template?.layoutSchema.elements.find(e => e.type === 'photo' && (e.slotIndex ?? 0) === slotIndex);
             if (element) {
                 elementId = element.id;
@@ -318,6 +330,16 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                                             step="0.05"
                                             value={selectedPhoto.scale || 1.0}
                                             onChange={(e) => updatePhotoSettings(activePhotoEdit.chapterId, activePhotoEdit.pageId, activePhotoEdit.photoId, { scale: parseFloat(e.target.value) })}
+                                            onMouseDown={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.beginTransaction();
+                                                }
+                                            }}
+                                            onMouseUp={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.commitTransaction();
+                                                }
+                                            }}
                                             className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                         />
                                     </div>
@@ -334,6 +356,16 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                                             step="1"
                                             value={selectedPhoto.xOffset !== undefined ? selectedPhoto.xOffset : 50}
                                             onChange={(e) => updatePhotoSettings(activePhotoEdit.chapterId, activePhotoEdit.pageId, activePhotoEdit.photoId, { xOffset: parseInt(e.target.value) })}
+                                            onMouseDown={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.beginTransaction();
+                                                }
+                                            }}
+                                            onMouseUp={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.commitTransaction();
+                                                }
+                                            }}
                                             className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                         />
                                     </div>
@@ -350,6 +382,16 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                                             step="1"
                                             value={selectedPhoto.yOffset !== undefined ? selectedPhoto.yOffset : 50}
                                             onChange={(e) => updatePhotoSettings(activePhotoEdit.chapterId, activePhotoEdit.pageId, activePhotoEdit.photoId, { yOffset: parseInt(e.target.value) })}
+                                            onMouseDown={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.beginTransaction();
+                                                }
+                                            }}
+                                            onMouseUp={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.commitTransaction();
+                                                }
+                                            }}
                                             className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                         />
                                     </div>
@@ -528,6 +570,16 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                                             placeholder="写点什么呢..."
                                             value={selectedTextSlot.text}
                                             onChange={(e) => updateSelectedTextSlot({ text: e.target.value })}
+                                            onFocus={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.beginTransaction();
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (useBookStore.getState().enableCommandHistory) {
+                                                    editorFacade.commitTransaction();
+                                                }
+                                            }}
                                             className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none text-xs text-gray-700 focus:border-indigo-600 focus:bg-white transition-colors resize-y font-normal"
                                         />
                                     </div>
@@ -787,35 +839,6 @@ export const SidebarProperty: React.FC<SidebarPropertyProps> = ({
                                 ))}
                             </select>
                         </div>
-
-
-
-                        <div className="space-y-2 border-t border-gray-100 pt-4">
-                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                                整书视觉主题
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                {[
-                                    { id: 'classic', name: '经典雅致', desc: 'Classic Traditional' },
-                                    { id: 'modern', name: '现代简约', desc: 'Sleek Modern' },
-                                    { id: 'warm', name: '温馨时光', desc: 'Warm Memory' },
-                                    { id: 'magazine', name: '时尚杂志', desc: 'Style Magazine' }
-                                ].map(themeOpt => {
-                                    const isThemeSelected = currentBook.theme === themeOpt.id;
-                                    return (
-                                        <button
-                                            key={themeOpt.id}
-                                            onClick={() => updateBookSettings({ theme: themeOpt.id as any })}
-                                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${isThemeSelected ? 'bg-indigo-50 border-indigo-600 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50/50'}`}
-                                        >
-                                            <div className="font-bold text-xs">{themeOpt.name}</div>
-                                            <div className="text-[8px] text-gray-400 mt-0.5 font-mono">{themeOpt.desc}</div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
                         <div className="space-y-2.5 border-t border-gray-100 pt-4">
                             <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
                                 辅助网格与线

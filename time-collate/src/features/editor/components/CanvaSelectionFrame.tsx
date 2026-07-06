@@ -29,7 +29,7 @@ export const CanvaSelectionFrame: React.FC<CanvaSelectionFrameProps> = ({
     // #endregion
 
     return (
-        <div className="absolute inset-0 pointer-events-none z-40 select-none">
+        <div className="absolute inset-0 pointer-events-none z-40 select-none canvas-editor-ui">
             {/* Canva 标志性紫色边框 */}
             <div className="absolute inset-0 border-2 border-[#8b3dff] rounded-[3px] pointer-events-none" />
 

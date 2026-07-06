@@ -3,6 +3,9 @@ import { bookService } from '../services/BookService.js';
 import { shareService } from '../services/ShareService.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { authMiddleware } from './authMiddleware.js';
+import { pool } from '../db/index.js';
+import { v4 as uuidv4 } from 'uuid';
+import { RowDataPacket } from 'mysql2';
 
 const router = Router();
 
@@ -64,7 +67,8 @@ router.post('/:id/publish-template', async (req, res) => {
         }
         
         // 校验源书籍所有权
-        const book = await bookService.getBook(id, req.userId);
+        const bookDetails = await bookService.getBook(id, req.userId);
+        const book = bookDetails?.book;
         if (!book || book.userId !== req.userId) {
             return res.status(403).json({ success: false, error: '无权发布此书籍' });
         }
@@ -89,7 +93,8 @@ router.post('/templates/:id/apply', async (req, res) => {
         }
 
         // 校验模板是否可访问
-        const template = await bookService.getBook(id, req.userId);
+        const templateDetails = await bookService.getBook(id, req.userId);
+        const template = templateDetails?.book;
         if (!template || template.type !== 'template') {
             return res.status(404).json({ success: false, error: '模板不存在或无权访问' });
         }
@@ -183,7 +188,8 @@ router.post('/', async (req, res) => {
 router.post('/:id/share', async (req, res) => {
     try {
         const id = req.params.id;
-        const book = await bookService.getBook(id, req.userId);
+        const bookDetails = await bookService.getBook(id, req.userId);
+        const book = bookDetails?.book;
         if (!book) {
             return res.status(403).json({ success: false, error: '无权分享此书籍' });
         }
@@ -207,7 +213,8 @@ router.patch('/:id/status', async (req, res) => {
         // 1. private -> pending (申请发布)
         // 2. pending/published/rejected -> private (撤回/下架)
 
-        const book = await bookService.getBook(id, req.userId);
+        const bookDetails = await bookService.getBook(id, req.userId);
+        const book = bookDetails?.book;
         if (!book) {
             return res.status(404).json({ success: false, error: '书籍不存在' });
         }
@@ -249,6 +256,24 @@ router.delete('/:id', async (req, res) => {
 });
 
 /**
+ * PATCH /api/books/:id/thumbnail
+ * 更新书籍缩略图派生资源
+ */
+router.patch('/:id/thumbnail', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { coverUrl, coverOssKey } = req.body;
+        if (!coverUrl) {
+            return res.status(400).json({ success: false, error: 'coverUrl is required' });
+        }
+        await bookService.updateThumbnail(id, coverUrl, coverOssKey || null, req.userId!);
+        sendSuccess(res, null, '缩略图更新成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
  * POST /api/books/:id/restore
  * 恢复已删除的书籍
  */
@@ -279,6 +304,107 @@ router.delete('/:id/permanent', async (req, res) => {
         }
 
         sendSuccess(res, null, '书籍已永久删除');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * PATCH /api/books/:id/cover
+ * 更新封面
+ */
+router.patch('/:id/cover', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const coverData = req.body;
+        const result = await bookService.saveCover(req.userId!, id, coverData);
+        sendSuccess(res, result, '封面保存成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * PATCH /api/books/pages/:id
+ * 更新页面
+ */
+router.patch('/pages/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const pageData = req.body;
+        const result = await bookService.savePage(req.userId!, id, pageData);
+        sendSuccess(res, result, '页面保存成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * POST /api/books/:id/pages
+ * 新增内页
+ */
+router.post('/:id/pages', async (req, res) => {
+    try {
+        const bookId = req.params.id;
+        const pageData = req.body;
+        
+        // 校验作品所有权
+        const bookDetails = await bookService.getBook(bookId, req.userId);
+        if (!bookDetails || bookDetails.book.userId !== req.userId) {
+            return res.status(403).json({ success: false, error: '无权操作此书籍' });
+        }
+
+        const pageId = pageData.id || uuidv4();
+        
+        // 在 pages 表中插入一条空白/默认的新页面
+        await pool.query(
+            `INSERT INTO pages (id, book_id, page_title, is_chapter_start, template_id, sort_order, elements, background, thumbnail) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+            [
+                pageId,
+                bookId,
+                pageData.pageTitle || '',
+                pageData.isChapterStart ? 1 : 0,
+                pageData.templateId || 'custom',
+                pageData.sortOrder || 0,
+                JSON.stringify({ version: '2.0', elements: pageData.elements || [] }),
+                JSON.stringify(pageData.background || { color: '#FFFFFF' })
+            ]
+        );
+
+        sendSuccess(res, { id: pageId }, '创建页面成功');
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
+ * DELETE /api/books/pages/:id
+ * 删除页面
+ */
+router.delete('/pages/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        
+        // 校验页面所有权 (通过关联的 book_id)
+        const [ownerCheck] = await pool.query<RowDataPacket[]>(
+            `SELECT p.id, p.book_id, b.user_id 
+             FROM pages p 
+             JOIN books b ON p.book_id = b.id 
+             WHERE p.id = ?`,
+            [id]
+        );
+        if (ownerCheck.length === 0) {
+            return res.status(404).json({ success: false, error: '页面不存在' });
+        }
+        if (ownerCheck[0].user_id !== req.userId) {
+            return res.status(403).json({ success: false, error: '无权操作此页面' });
+        }
+
+        // 删除页面
+        await pool.query('DELETE FROM pages WHERE id = ?', [id]);
+
+        sendSuccess(res, null, '页面删除成功');
     } catch (error) {
         sendError(res, error as Error);
     }

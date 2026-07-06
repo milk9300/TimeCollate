@@ -74,7 +74,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
 
     const mockPage = {
         id: 'mock-preview-page',
-        layout: template.id,
+        templateId: template.id,
         content: mockContent,
         photos: mockPhotos
     };

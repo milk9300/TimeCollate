@@ -24,10 +24,26 @@ export interface Page {
     isChapterStart?: boolean;
     content: string;
     photos: Photo[];
-    layout: string;
+    templateId: string;
     sortOrder?: number;
     elements?: CanvasElement[];
     background?: CanvasBackgroundConfig;
+    thumbnail?: string; // V2 新增：页面缩略图
+    templateOriginType?: 'PAGE' | 'COLLECTION';
+    templateOriginId?: string;
+    pageType?: string;
+}
+
+export interface BookCover {
+    id: string;
+    bookId: string;
+    frontElements: CanvasElement[];
+    backElements: CanvasElement[];
+    frontBackground?: CanvasBackgroundConfig;
+    backBackground?: CanvasBackgroundConfig;
+    frontThumbnail?: string;
+    backThumbnail?: string;
+    version: number;
 }
 
 //#region Canvas Editor Types
@@ -131,16 +147,14 @@ export interface Template {
     visibility?: 'private' | 'public';
     creatorId?: string;
     createdAt?: number;
+    tags?: string[];
+    coverUrl?: string;
+    favoriteCount?: number;
+    useCount?: number;
+    templateOriginType?: 'PAGE';
+    templateOriginId?: string;
 }
 
-export interface BookTheme {
-    id: string;
-    name: string;
-    creatorId: string;
-    visibility: 'private' | 'public';
-    themeSchema: any;
-    createdAt?: number;
-}
 
 export type ThemeType = 'classic' | 'modern' | 'warm' | 'magazine';
 export type PageSize = 'A4' | 'A5' | 'B5' | 'LETTER';
@@ -152,14 +166,13 @@ export interface Book {
     author: string;
     type?: 'book' | 'template';
     createdAt: number;
+    updatedAt?: number;
     pages: Page[];
-    theme: ThemeType;
     pageSize: PageSize;
     coverUrl?: string;
     coverThumbnailUrl?: string;
     coverOssKey?: string;
-    preface?: string;
-    showPreface?: boolean;
+    coverId?: string; // V2 新增：关联封面 ID
     isPublic?: boolean;
     status?: 'private' | 'pending' | 'published' | 'rejected';
     category?: string;
@@ -170,6 +183,27 @@ export interface Book {
     favorited?: boolean;
     pageCount?: number;
     photoCount?: number;
+    templateOriginType?: 'BOOK';
+    templateOriginId?: string;
+    useCount?: number;
+}
+
+export interface TemplateCollection {
+    id: string;
+    title: string;
+    description?: string;
+    cover?: string;
+    author: string;
+    visibility: 'private' | 'public';
+    createdAt: number;
+    updatedAt?: number;
+}
+
+export interface TemplateCollectionItem {
+    collectionId: string;
+    pageTemplateId: string;
+    sort: number;
+    pageTemplate?: Template;
 }
 
 export interface Feedback {

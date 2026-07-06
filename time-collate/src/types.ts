@@ -26,10 +26,38 @@ export interface Page {
   isChapterStart?: boolean;
   content: string;    // 页面正文
   photos: Photo[];    // 页面图片
-  layout: string;     // 页面布局类型 (支持静态内置或动态模板 ID)
+  templateId: string;     // 页面布局类型 (支持静态内置或动态模板 ID)
   sortOrder?: number;
   elements?: CanvasElement[]; // 新增：页面自由组件数组
   background?: CanvasBackgroundConfig; // 新增：页面自定义背景配置
+  thumbnail?: string; // V2 新增：页面缩略图
+  templateOriginType?: 'PAGE' | 'COLLECTION';
+  templateOriginId?: string;
+  pageType?: string;   // 页面类型 (例如 'cover' | 'inner')
+}
+
+export interface BookCover {
+  id: string;
+  bookId: string;
+  frontElements: CanvasElement[];
+  backElements: CanvasElement[];
+  frontBackground?: CanvasBackgroundConfig;
+  backBackground?: CanvasBackgroundConfig;
+  frontThumbnail?: string;
+  backThumbnail?: string;
+  version: number;
+}
+
+export interface Document {
+  id: string;
+  type: 'cover' | 'page';
+  sourceId: string;      // 对应 book_cover.id 或 page.id
+  title: string;         // 书封、P1、P2...
+  elements: CanvasElement[];
+  background: CanvasBackgroundConfig;
+  thumbnail: string;
+  isChapterStart?: boolean;
+  templateId?: string;
 }
 
 export interface LayoutElementStyle {
@@ -83,7 +111,7 @@ export interface BaseCanvasElement {
   zIndex: number;  // 图层顺序
   groupId?: string; // 逻辑分组 ID
   locked?: boolean; // 误触编辑锁
-  role?: 'chapter-title' | 'chapter-date' | 'page-content' | 'none';
+  role?: 'chapter-title' | 'chapter-date' | 'page-content' | 'cover-title' | 'cover-author' | 'none';
 }
 
 export interface PhotoFrameElement extends BaseCanvasElement {
@@ -114,6 +142,7 @@ export interface TextElementConfig {
   textAlign?: 'left' | 'center' | 'right' | 'justify';
   lineHeight?: number;
   letterSpacing?: string;
+  fontStyle?: string;
 }
 
 export interface TextElement extends BaseCanvasElement {
@@ -162,7 +191,7 @@ export interface CanvasLayoutSchema {
 export interface Template {
   id: string;
   name: string;
-  templateType?: 'cover' | 'preface' | 'structural' | 'content';
+  templateType?: 'cover' | 'structural' | 'content';
   photoCount: number;
   category: string;
   layoutSchema: {
@@ -173,6 +202,12 @@ export interface Template {
   visibility?: 'private' | 'public';
   creatorId?: string;
   createdAt?: number;
+  tags?: string[];
+  coverUrl?: string;
+  favoriteCount?: number;
+  useCount?: number;
+  templateOriginType?: 'PAGE';
+  templateOriginId?: string;
 }
 
 /**
@@ -194,15 +229,15 @@ export interface Book {
   author: string;
   type?: 'book' | 'template';
   createdAt: number;
+  updatedAt?: number;
   pages: Page[];
-  theme: string; // 改为 string 以支持内置主题 and 动态主题 ID
   pageSize: PageSize; // 新增：印刷纸张尺寸
   coordinateSystem?: string; // 坐标系统标识 (例如 'virtual')
   coverUrl?: string;
   coverThumbnailUrl?: string;
   coverOssKey?: string;
-  preface?: string;
-  showPreface?: boolean;
+  coverId?: string; // V2 新增：关联封面 ID
+
   isPublic?: boolean;
   status?: 'private' | 'pending' | 'published' | 'rejected';
   category?: string;
@@ -213,6 +248,27 @@ export interface Book {
   favorited?: boolean;
   pageCount?: number;
   photoCount?: number;
+  templateOriginType?: 'BOOK';
+  templateOriginId?: string;
+  useCount?: number;
+}
+
+export interface TemplateCollection {
+  id: string;
+  title: string;
+  description?: string;
+  cover?: string;
+  author: string;
+  visibility: 'private' | 'public';
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface TemplateCollectionItem {
+  collectionId: string;
+  pageTemplateId: string;
+  sort: number;
+  pageTemplate?: Template;
 }
 
 export interface Feedback {

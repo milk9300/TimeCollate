@@ -35,6 +35,7 @@ const AdminSecurity = lazy(() => import('./features/admin/pages/AdminSecurity').
 const AdminDanger = lazy(() => import('./features/admin/pages/AdminDanger').then(m => ({ default: m.AdminDanger })));
 
 import { AdminGuard } from './features/admin/components/AdminGuard';
+import { DesignerGuard } from './features/admin/components/DesignerGuard';
 
 // 配置基础地址
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL;
@@ -48,19 +49,65 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-// 全局 Axios 响应拦截器，捕获 401 未授权错误，自动清除 Token 并重定向至登录页
+// #region 全局 Axios 响应拦截器 — 401 自动续签
+// 并发防抖：多个请求同时 401 时，共享一个 refresh Promise，避免重复刷新
+let refreshPromise: Promise<string> | null = null;
+
 axios.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      const { isAuthenticated, logout } = useAuthStore.getState();
-      if (isAuthenticated) {
-        logout();
-      }
+  async (error) => {
+    const originalRequest = error.config;
+
+    // 非 401 错误或已重试过，直接拒绝
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    // 跳过 auth 端点自身，防止死循环
+    const url = originalRequest.url || '';
+    if (url.includes('/auth/refresh') || url.includes('/auth/login')) {
+      return Promise.reject(error);
+    }
+
+    const { refreshToken, isAuthenticated, setTokens, logout } = useAuthStore.getState();
+
+    // 没有 refreshToken 或未登录，直接登出
+    if (!refreshToken || !isAuthenticated) {
+      logout();
+      return Promise.reject(error);
+    }
+
+    // 标记此请求已尝试过续签，防止无限循环
+    originalRequest._retry = true;
+
+    try {
+      // 并发防抖：如果已有 refresh 请求在进行中，等待其结果
+      if (!refreshPromise) {
+        refreshPromise = axios
+          .post('/auth/refresh', { refreshToken })
+          .then((res) => {
+            const { accessToken, refreshToken: newRefreshToken } = res.data.data;
+            setTokens(accessToken, newRefreshToken);
+            return accessToken;
+          })
+          .finally(() => {
+            refreshPromise = null;
+          });
+      }
+
+      const newAccessToken = await refreshPromise;
+
+      // 用新 Token 重试原始请求
+      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      return axios(originalRequest);
+    } catch (refreshError) {
+      // Refresh Token 也失效了，真正登出
+      logout();
+      return Promise.reject(refreshError);
+    }
   }
 );
+// #endregion
 
 /**
  * 路由守卫组件
@@ -131,11 +178,11 @@ function App() {
           <Route path="/trash" element={<AuthGuard><Trash /></AuthGuard>} />
           <Route path="/profile/:userId?" element={<AuthGuard><Profile /></AuthGuard>} />
           <Route path="/market/books" element={<AuthGuard><BookMarket /></AuthGuard>} />
-          <Route path="/market/layouts" element={<AuthGuard><Market /></AuthGuard>} />
-          <Route path="/my/book-templates" element={<AuthGuard><MyBookTemplates /></AuthGuard>} />
-          <Route path="/my/layouts" element={<AuthGuard><MyLayouts /></AuthGuard>} />
+          <Route path="/market/layouts" element={<DesignerGuard><Market /></DesignerGuard>} />
+          <Route path="/my/book-templates" element={<DesignerGuard><MyBookTemplates /></DesignerGuard>} />
+          <Route path="/my/layouts" element={<DesignerGuard><MyLayouts /></DesignerGuard>} />
           <Route path="/my/assets" element={<AuthGuard><AssetCenter /></AuthGuard>} />
-          <Route path="/builder" element={<AuthGuard><AdminBuilder /></AuthGuard>} />
+          <Route path="/builder" element={<DesignerGuard><AdminBuilder /></DesignerGuard>} />
 
           {/* 管理员路由 */}
           <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />

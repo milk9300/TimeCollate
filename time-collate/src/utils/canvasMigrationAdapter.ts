@@ -1,5 +1,5 @@
 import type { Page, Chapter, CanvasElement, CanvasBackgroundConfig, PhotoFrameElement, TextElement, StickerElement, Book } from '../types';
-import { getSlotText, getSlotStyle, parsePageContent, getPageDecorations, getPageBackgroundImage } from './textSlotHelper';
+import { getSlotText, getSlotStyle, parsePageContent, getPageDecorations, getPageBackgroundImage, getPageAtmosphere } from './textSlotHelper';
 import { getPhotoForSlot } from './slotHelper';
 import { getVirtualDimensions } from '../rendering/PhysicalConstants';
 import type { PageSize } from '../rendering/PhysicalConstants';
@@ -21,6 +21,13 @@ export function adaptV1ToV2(
     template: any,
     pageSize: PageSize = 'A4'
 ): { elements: CanvasElement[]; background: CanvasBackgroundConfig } {
+    if (page.elements && page.elements.length > 0) {
+        return {
+            elements: page.elements,
+            background: page.background || template?.layoutSchema?.background || {}
+        };
+    }
+
     if (!template || !template.layoutSchema) {
         return { elements: [], background: {} };
     }
@@ -33,10 +40,10 @@ export function adaptV1ToV2(
     const elements: CanvasElement[] = layoutSchema.elements.map((el: any) => {
         // 读取槽位覆盖样式
         const override = overrides[el.id] || {};
-        const left = Math.round((parsePercent(override.left ?? el.style.left, 0) / 100) * virtualWidth);
-        const top = Math.round((parsePercent(override.top ?? el.style.top, 0) / 100) * virtualHeight);
-        const width = Math.round((parsePercent(override.width ?? el.style.width, 0) / 100) * virtualWidth);
-        const height = Math.round((parsePercent(override.height ?? el.style.height, 0) / 100) * virtualHeight);
+        const left = Math.round((parsePercent(override.left ?? (el.x !== undefined ? el.x / 10 : undefined) ?? el.style?.left, 0) / 100) * virtualWidth);
+        const top = Math.round((parsePercent(override.top ?? (el.y !== undefined ? el.y / 14.14 : undefined) ?? el.style?.top, 0) / 100) * virtualHeight);
+        const width = Math.round((parsePercent(override.width ?? (el.width !== undefined ? el.width / 10 : undefined) ?? el.style?.width, 0) / 100) * virtualWidth);
+        const height = Math.round((parsePercent(override.height ?? (el.height !== undefined ? el.height / 14.14 : undefined) ?? el.style?.height, 0) / 100) * virtualHeight);
 
         if (el.type === 'text') {
             let content = '';
@@ -59,7 +66,7 @@ export function adaptV1ToV2(
                 borderRadius, borderColor, borderWidth, borderStyle,
                 backgroundColor, boxShadow, zIndex, padding,
                 ...typographyStyle
-            } = el.style;
+            } = el.style || {};
 
             // 获取槽位特定的特定内联样式覆盖
             const textStyle = getSlotStyle(page.content, el.id, typographyStyle);
@@ -72,7 +79,7 @@ export function adaptV1ToV2(
                 width: width,
                 height: height,
                 rotate: 0,
-                zIndex: el.style.zIndex ?? 10,
+                zIndex: el.style?.zIndex ?? 10,
                 role,
                 textConfig: {
                     content,
@@ -98,7 +105,7 @@ export function adaptV1ToV2(
                 width: width,
                 height: height,
                 rotate: 0,
-                zIndex: el.style.zIndex ?? 10,
+                zIndex: el.style?.zIndex ?? 10,
                 photo: photo ? {
                     id: photo.id,
                     url: photo.url,
@@ -139,8 +146,15 @@ export function adaptV1ToV2(
     });
 
     // 3. 构建背景
+    const atmosphere = getPageAtmosphere(page.content);
+    let atmosphereBg = '#FFFFFF';
+    if (atmosphere === 'travel') atmosphereBg = '#FAF5EC';
+    else if (atmosphere === 'retro') atmosphereBg = '#ECE3D3';
+    else if (atmosphere === 'film') atmosphereBg = '#18181B';
+    else if (atmosphere === 'notebook') atmosphereBg = '#FDFCF7';
+
     const background: CanvasBackgroundConfig = {
-        color: layoutSchema.background?.color || '#FFFFFF',
+        color: layoutSchema.background?.color || atmosphereBg,
         gridPattern: !!layoutSchema.background?.gridPattern,
         backgroundImage: getPageBackgroundImage(page.content)
     };

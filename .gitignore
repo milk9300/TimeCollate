@@ -33,6 +33,7 @@ package-lock.json
 
 # Build output
 dist/
+dist-fonts/
 build/
 .out/
 .next/
@@ -116,6 +117,7 @@ docker-data/
 server/dist/
 server/node_modules/
 server/.env
+server/raw-fonts
 
 # =========================
 # 开发文档

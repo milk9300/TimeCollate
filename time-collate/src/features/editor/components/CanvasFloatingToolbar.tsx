@@ -6,7 +6,7 @@
 // #endregion
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { useBookStore } from '../../../store';
+import { useBookStore, useConvertedPages } from '../../../store';
 import { 
     RefreshCw, 
     Eraser, 
@@ -47,11 +47,11 @@ export const CanvasFloatingToolbar: React.FC = () => {
     const pageId = activePhotoEdit?.pageId || activeTextEdit?.pageId || activeStickerEdit?.pageId;
     const chapterId = activePhotoEdit?.chapterId || activeTextEdit?.chapterId || activeStickerEdit?.chapterId;
 
-    // 获取当前选中元素关联的页面和内容
+    const pages = useConvertedPages();
     const pageData = useMemo(() => {
-        if (!pageId || !currentBook) return null;
-        return currentBook.pages?.find(p => p.id === pageId) || null;
-    }, [pageId, currentBook]);
+        if (!pageId) return null;
+        return pages.find(p => p.id === pageId) || null;
+    }, [pageId, pages]);
 
     const pageContent = pageData?.content || '';
 

@@ -106,11 +106,32 @@ export const exportWorker = new Worker(
         await updateTask(taskId, { status: 'active', progress: 10 });
         await job.updateProgress(10);
 
-        const book = await bookService.getBook(bookId);
-
-        if (!book) {
+        const result = await bookService.getBook(bookId);
+        if (!result) {
             throw new Error(`Book not found: ${bookId}`);
         }
+        const { book: rawBook, cover, pages } = result;
+
+        const bookPages = [...(pages || [])];
+        if (cover) {
+            bookPages.unshift({
+                id: cover.id,
+                bookId: rawBook.id,
+                pageTitle: '书封',
+                isChapterStart: false,
+                content: '',
+                photos: [],
+                templateId: 'book-cover',
+                sortOrder: -1,
+                elements: cover.frontElements || [],
+                background: { color: '#FFFFFF', gridPattern: false }
+            });
+        }
+
+        const book = {
+            ...rawBook,
+            pages: bookPages
+        };
 
         await updateTask(taskId, { progress: 30 });
         await job.updateProgress(30);

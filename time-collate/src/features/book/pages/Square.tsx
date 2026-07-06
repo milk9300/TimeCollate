@@ -140,7 +140,6 @@ export const Square: React.FC = () => {
                 category: bookData.category || currentInspiration.category,
                 createdAt: Date.now(),
                 pages: [],
-                theme: currentInspiration.theme as any,
                 pageSize: 'A4'
             };
             await bookService.saveBook(newBook);
@@ -172,22 +171,20 @@ export const Square: React.FC = () => {
         }
 
         const title = book.title.toLowerCase();
-        const theme = book.theme ? book.theme.toLowerCase() : '';
-        
         if (selectedCategory === 'travel') {
-            return theme.includes('travel') || title.includes('旅') || title.includes('海') || title.includes('山') || title.includes('行');
+            return title.includes('旅') || title.includes('海') || title.includes('山') || title.includes('行');
         }
         if (selectedCategory === 'baby') {
-            return theme.includes('baby') || theme.includes('growth') || title.includes('宝') || title.includes('成长') || title.includes('岁') || title.includes('记');
+            return title.includes('宝') || title.includes('成长') || title.includes('岁') || title.includes('记');
         }
         if (selectedCategory === 'love') {
-            return theme.includes('love') || theme.includes('wedding') || title.includes('爱') || title.includes('情') || title.includes('婚') || title.includes('甜');
+            return title.includes('爱') || title.includes('情') || title.includes('婚') || title.includes('甜');
         }
         if (selectedCategory === 'graduation') {
-            return theme.includes('graduation') || theme.includes('school') || title.includes('毕') || title.includes('学') || title.includes('校') || title.includes('青');
+            return title.includes('毕') || title.includes('学') || title.includes('校') || title.includes('青');
         }
         if (selectedCategory === 'pet') {
-            return theme.includes('pets') || theme.includes('animal') || title.includes('猫') || title.includes('狗') || title.includes('宠');
+            return title.includes('猫') || title.includes('狗') || title.includes('宠');
         }
         
         return true;
