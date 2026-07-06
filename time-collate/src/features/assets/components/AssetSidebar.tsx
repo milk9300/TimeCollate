@@ -19,16 +19,12 @@ import type { MaterialFolder } from '../services/assetService';
 
 interface AssetSidebarProps {
     isEmbed?: boolean;
-    dataSource: 'local' | 'pexels';
-    setDataSource: (src: 'local' | 'pexels') => void;
     handleFolderDragStart: (e: React.DragEvent, folderId: string) => void;
     handleFolderDrop: (e: React.DragEvent, targetFolderId: string | null) => void;
 }
 
 export function AssetSidebar({
     isEmbed = false,
-    dataSource,
-    setDataSource,
     handleFolderDragStart,
     handleFolderDrop
 }: AssetSidebarProps) {
@@ -132,7 +128,6 @@ export function AssetSidebar({
                                 ${isSelected ? 'bg-indigo-50/70 text-indigo-650' : 'text-slate-600 hover:bg-slate-50'}`}
                     style={{ paddingLeft: `${depth * 12 + 8}px` }}
                     onClick={() => {
-                        setDataSource('local');
                         setSelectedFolderId(node.id);
                     }}
                 >
@@ -250,126 +245,98 @@ export function AssetSidebar({
 
     return (
         <aside className="w-60 bg-white border-r border-slate-100 flex flex-col shrink-0 overflow-y-auto custom-scrollbar p-5 select-none h-full">
-            {/* 数据源切换 Tab */}
-            <div className="flex bg-slate-100 p-1 rounded-xl mb-6 select-none shrink-0">
+            {/* Capacity Quota */}
+            {storageQuota && (
+                <div className="mb-6 p-4 bg-slate-50 border border-slate-100 rounded-[18px]">
+                    <div className="flex items-center gap-2 text-slate-600 font-bold text-[10px] uppercase tracking-wider mb-2">
+                        <HardDrive size={13} />
+                        <span>云盘存储额度</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mb-2">
+                        <div
+                            className={`h-full transition-all duration-500 rounded-full ${
+                                storageQuota.percentage > 85
+                                    ? 'bg-rose-500'
+                                    : storageQuota.percentage > 60
+                                    ? 'bg-amber-500'
+                                    : 'bg-indigo-600'
+                            }`}
+                            style={{ width: `${storageQuota.percentage}%` }}
+                        />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-black text-slate-400">
+                        <span>{formatBytes(storageQuota.used)}</span>
+                        <span>{formatBytes(storageQuota.total)}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Directories Header */}
+            <div className="flex items-center justify-between mb-3.5 px-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">素材文件夹</span>
                 <button
-                    onClick={() => setDataSource('local')}
-                    className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer
-                                ${dataSource === 'local' ? 'bg-white text-indigo-650 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                    onClick={() => {
+                        setNewFolderParentId(null);
+                        setShowNewFolderInput(true);
+                    }}
+                    className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                 >
-                    我的素材
-                </button>
-                <button
-                    onClick={() => setDataSource('pexels')}
-                    className={`flex-1 text-center py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer
-                                ${dataSource === 'pexels' ? 'bg-white text-indigo-650 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-                >
-                    图库推荐
+                    <FolderPlus size={14} />
                 </button>
             </div>
 
-            {dataSource === 'local' ? (
-                <>
-                    {/* Capacity Quota */}
-                    {storageQuota && (
-                        <div className="mb-6 p-4 bg-slate-50 border border-slate-100 rounded-[18px]">
-                            <div className="flex items-center gap-2 text-slate-600 font-bold text-[10px] uppercase tracking-wider mb-2">
-                                <HardDrive size={13} />
-                                <span>云盘存储额度</span>
-                            </div>
-                            <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden mb-2">
-                                <div
-                                    className={`h-full transition-all duration-500 rounded-full ${
-                                        storageQuota.percentage > 85
-                                            ? 'bg-rose-500'
-                                            : storageQuota.percentage > 60
-                                            ? 'bg-amber-500'
-                                            : 'bg-indigo-600'
-                                    }`}
-                                    style={{ width: `${storageQuota.percentage}%` }}
-                                />
-                            </div>
-                            <div className="flex items-center justify-between text-[10px] font-black text-slate-400">
-                                <span>{formatBytes(storageQuota.used)}</span>
-                                <span>{formatBytes(storageQuota.total)}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Directories Header */}
-                    <div className="flex items-center justify-between mb-3.5 px-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">素材文件夹</span>
-                        <button
-                            onClick={() => {
-                                setNewFolderParentId(null);
-                                setShowNewFolderInput(true);
-                            }}
-                            className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
-                        >
-                            <FolderPlus size={14} />
-                        </button>
-                    </div>
-
-                    {/* New Folder Creation Inline Form */}
-                    {showNewFolderInput && (
-                        <form onSubmit={handleCreateFolderSubmit} className="mb-3 px-2 flex items-center gap-1.5">
-                            <input
-                                type="text"
-                                placeholder={newFolderParentId ? '子文件夹名...' : '文件夹名...'}
-                                value={newFolderName}
-                                onChange={(e) => setNewFolderName(e.target.value)}
-                                autoFocus
-                                className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 focus:bg-white text-slate-700 font-bold"
-                            />
-                            <button
-                                type="submit"
-                                className="w-6 h-6 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer"
-                            >
-                                <Check size={11} strokeWidth={2.5} />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setShowNewFolderInput(false);
-                                    setNewFolderParentId(null);
-                                    setNewFolderName('');
-                                }}
-                                className="w-6 h-6 flex items-center justify-center bg-slate-50 text-slate-400 rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-slate-650 transition-all cursor-pointer"
-                            >
-                                <X size={11} />
-                            </button>
-                        </form>
-                    )}
-
-                    {/* Folder Tree list */}
-                    <div className="space-y-1">
-                        {/* All Materials node */}
-                        <div
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => handleFolderDrop(e, null)}
-                            className={`flex items-center gap-2 py-1.5 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all
-                                        ${selectedFolderId === null ? 'bg-indigo-50/70 text-indigo-650' : 'text-slate-600 hover:bg-slate-50'}`}
-                            onClick={() => {
-                                setDataSource('local');
-                                setSelectedFolderId(null);
-                            }}
-                        >
-                            <FolderOpen size={14} className={selectedFolderId === null ? 'text-indigo-600' : 'text-slate-400'} />
-                            <span>所有素材</span>
-                        </div>
-
-                        {/* Folder tree */}
-                        <div className="mt-2 space-y-0.5 border-t border-slate-100/50 pt-2">
-                            {folderTree.map(node => renderFolderNode(node))}
-                        </div>
-                    </div>
-                </>
-            ) : (
-                <div className="flex-1 flex flex-col justify-center items-center text-center p-4 text-slate-400">
-                    <span className="text-[10px] font-bold">已切换为第三方库</span>
-                    <span className="text-[9px] mt-1 text-slate-300">通过右侧搜索框检索 Pexels 资源</span>
-                </div>
+            {/* New Folder Creation Inline Form */}
+            {showNewFolderInput && (
+                <form onSubmit={handleCreateFolderSubmit} className="mb-3 px-2 flex items-center gap-1.5">
+                    <input
+                        type="text"
+                        placeholder={newFolderParentId ? '子文件夹名...' : '文件夹名...'}
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                        autoFocus
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 focus:bg-white text-slate-700 font-bold"
+                    />
+                    <button
+                        type="submit"
+                        className="w-6 h-6 flex items-center justify-center bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer"
+                    >
+                        <Check size={11} strokeWidth={2.5} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowNewFolderInput(false);
+                            setNewFolderParentId(null);
+                            setNewFolderName('');
+                        }}
+                        className="w-6 h-6 flex items-center justify-center bg-slate-50 text-slate-400 rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-slate-650 transition-all cursor-pointer"
+                    >
+                        <X size={11} />
+                    </button>
+                </form>
             )}
+
+            {/* Folder Tree list */}
+            <div className="space-y-1">
+                {/* All Materials node */}
+                <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => handleFolderDrop(e, null)}
+                    className={`flex items-center gap-2 py-1.5 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all
+                                ${selectedFolderId === null ? 'bg-indigo-50/70 text-indigo-650' : 'text-slate-600 hover:bg-slate-50'}`}
+                    onClick={() => {
+                        setSelectedFolderId(null);
+                    }}
+                >
+                    <FolderOpen size={14} className={selectedFolderId === null ? 'text-indigo-600' : 'text-slate-400'} />
+                    <span>所有素材</span>
+                </div>
+
+                {/* Folder tree */}
+                <div className="mt-2 space-y-0.5 border-t border-slate-100/50 pt-2">
+                    {folderTree.map(node => renderFolderNode(node))}
+                </div>
+            </div>
         </aside>
     );
 }

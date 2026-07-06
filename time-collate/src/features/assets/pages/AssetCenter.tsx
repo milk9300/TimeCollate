@@ -24,7 +24,6 @@ export function AssetCenter({ isEmbed = false }: { isEmbed?: boolean }) {
     } = useAssetStore();
 
     // 局部状态维护
-    const [dataSource, setDataSource] = useState<'local' | 'pexels'>('local');
     const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
     
     // 弹窗状态
@@ -76,29 +75,21 @@ export function AssetCenter({ isEmbed = false }: { isEmbed?: boolean }) {
             {/* 1. 左侧素材目录树 (Sidebar) */}
             <AssetSidebar
                 isEmbed={isEmbed}
-                dataSource={dataSource}
-                setDataSource={setDataSource}
                 handleFolderDragStart={handleFolderDragStart}
                 handleFolderDrop={handleFolderDrop}
             />
 
             {/* 2. 右侧素材展示与搜索区 */}
-            {dataSource === 'local' ? (
-                <LocalMaterialGrid
-                    isEmbed={isEmbed}
-                    selectedMaterialIds={selectedMaterialIds}
-                    setSelectedMaterialIds={setSelectedMaterialIds}
-                    onPreviewMaterial={setPreviewMaterial}
-                    onMoveMaterial={setMovingMaterial}
-                    onBatchMove={() => setShowBatchMoveModal(true)}
-                    handleFolderDragStart={handleFolderDragStart}
-                    handleFolderDrop={handleFolderDrop}
-                />
-            ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-400 bg-slate-50/40 font-bold text-xs">
-                    第三方图库推荐功能在此版本不可用
-                </div>
-            )}
+            <LocalMaterialGrid
+                isEmbed={isEmbed}
+                selectedMaterialIds={selectedMaterialIds}
+                setSelectedMaterialIds={setSelectedMaterialIds}
+                onPreviewMaterial={setPreviewMaterial}
+                onMoveMaterial={setMovingMaterial}
+                onBatchMove={() => setShowBatchMoveModal(true)}
+                handleFolderDragStart={handleFolderDragStart}
+                handleFolderDrop={handleFolderDrop}
+            />
 
             {/* 3. 素材预览弹窗 */}
             <AssetPreviewModal
