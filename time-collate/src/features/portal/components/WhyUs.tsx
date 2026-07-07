@@ -38,24 +38,24 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
     switch (activeTab) {
       case 1:
         return (
-          <div className="w-full h-full relative bg-[#FAF7EE] dark:bg-stone-900 flex flex-col justify-between p-6 transition-colors duration-300">
-            {/* 画布网格格线底纹 - 使用 currentColor 自动适配暗色模式 */}
+          <div className="w-full h-full relative bg-[#FAF7EE] flex flex-col justify-between p-6 transition-colors duration-300">
+            {/* 画布网格格线底纹 */}
             <div
-              className="absolute inset-0 z-0 opacity-40 pointer-events-none text-[#E1DDD5] dark:text-stone-850"
+              className="absolute inset-0 z-0 opacity-40 pointer-events-none text-[#E1DDD5]"
               style={{
                 backgroundSize: '24px 24px',
                 backgroundImage: 'linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)',
               }}
             />
             {/* 状态栏 */}
-            <div className="relative z-10 flex items-center justify-between border-b border-[#E1DDD5] dark:border-stone-800 pb-4 select-none">
+            <div className="relative z-10 flex items-center justify-between border-b border-[#E1DDD5] pb-4 select-none">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-rose-400/85" />
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-400/85" />
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/85" />
-                <span className="text-[10px] font-mono text-[#9B978E] dark:text-stone-500 ml-1">TimeCollate_Canvas_V2.0.snb</span>
+                <span className="text-[10px] font-mono text-[#9B978E] ml-1">TimeCollate_Canvas_V2.0.snb</span>
               </div>
-              <div className="px-2.5 py-0.5 bg-white/90 dark:bg-stone-800/90 rounded-md border border-[#E1DDD5] dark:border-stone-700 text-[9px] font-bold text-[#C5A059] shadow-sm">
+              <div className="px-2.5 py-0.5 bg-white/90 rounded-md border border-[#E1DDD5] text-[9px] font-bold text-[#C5A059] shadow-sm">
                 100% 自适应比例
               </div>
             </div>
@@ -63,13 +63,13 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
             {/* 画布主体编辑区 */}
             <div className="relative z-10 flex-1 flex items-center justify-center">
               {/* 模拟相片卡片 */}
-              <div className="relative w-[200px] aspect-[4/3] bg-white dark:bg-stone-800 p-2.5 rounded-xl shadow-[0_12px_24px_rgba(44,53,57,0.08)] dark:shadow-none border border-stone-200/80 dark:border-stone-700 animate-[photo-drag-in_6s_cubic-bezier(0.16,1,0.3,1)_infinite] select-none">
+              <div className="relative w-[200px] aspect-[4/3] bg-white p-2.5 rounded-xl shadow-[0_12px_24px_rgba(44,53,57,0.08)] border border-stone-200/80 animate-[photo-drag-in_6s_cubic-bezier(0.16,1,0.3,1)_infinite] select-none">
                 <img
                   src="https://images.unsplash.com/photo-1472289065668-ce650ac443d2?auto=format&fit=crop&w=400&q=80"
                   className="w-full h-[80%] object-cover rounded-md pointer-events-none"
                   alt="Tibet cycling"
                 />
-                <div className="text-[8.5px] text-[#56534C] dark:text-stone-300 text-left mt-2.5 font-serif font-bold italic">🚴‍♂️ 西藏骑行记 · 318国道</div>
+                <div className="text-[8.5px] text-[#56534C] text-left mt-2.5 font-serif font-bold italic">🚴‍♂️ 西藏骑行记 · 318国道</div>
 
                 {/* Moveable 控制把手 */}
                 <div className="absolute inset-0 border border-blue-500/80 rounded-xl pointer-events-none animate-[float-controls_6s_cubic-bezier(0.16,1,0.3,1)_infinite]">
@@ -83,20 +83,20 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
               </div>
 
               {/* 装饰复古胶带 */}
-              <div className="absolute top-8 right-8 w-16 h-5 bg-[#FAF4ED]/70 dark:bg-amber-950/20 border-l border-r border-[#C5A059]/10 shadow-[0_1px_2px_rgba(0,0,0,0.02)] backdrop-blur-[1px] rotate-[15deg] select-none pointer-events-none opacity-80" 
+              <div className="absolute top-8 right-8 w-16 h-5 bg-[#FAF4ED]/70 border-l border-r border-[#C5A059]/10 shadow-[0_1px_2px_rgba(0,0,0,0.02)] backdrop-blur-[1px] rotate-[15deg] select-none pointer-events-none opacity-80" 
                 style={{
                   clipPath: 'polygon(0% 0%, 5% 100%, 95% 95%, 100% 0%)'
                 }}
               />
               
               {/* 金色徽章贴纸 */}
-              <div className="absolute bottom-8 left-10 px-2.5 py-0.5 bg-[#FAF4ED] dark:bg-stone-850 border border-[#C5A059]/30 text-[7px] text-[#C5A059] font-black rounded shadow-sm rotate-[-8deg] pointer-events-none select-none animate-[float-sticker_4s_ease-in-out_infinite]">
+              <div className="absolute bottom-8 left-10 px-2.5 py-0.5 bg-[#FAF4ED] border border-[#C5A059]/30 text-[7px] text-[#C5A059] font-black rounded shadow-sm rotate-[-8deg] pointer-events-none select-none animate-[float-sticker_4s_ease-in-out_infinite]">
                 ★ 青春纪念
               </div>
             </div>
 
             {/* 工具辅助说明 */}
-            <div className="relative z-10 flex items-center justify-between border-t border-[#E1DDD5] dark:border-stone-800 pt-3 text-[8.5px] font-bold text-[#9B978E] dark:text-stone-500">
+            <div className="relative z-10 flex items-center justify-between border-t border-[#E1DDD5] pt-3 text-[8.5px] font-bold text-[#9B978E]">
               <span>X: 135px  Y: 96px</span>
               <span>比例已自适应锁定</span>
             </div>
@@ -104,7 +104,7 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
         );
       case 2:
         return (
-          <div className="w-full h-full relative bg-[#FAF7EE] dark:bg-stone-900 flex items-center justify-center p-6 overflow-hidden transition-colors duration-300">
+          <div className="w-full h-full relative bg-[#FAF7EE] flex items-center justify-center p-6 overflow-hidden transition-colors duration-300">
             {/* 3D透视场景 */}
             <div className="w-[300px] h-[200px] relative select-none" style={{ perspective: '1200px' }}>
               
@@ -112,12 +112,12 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
               <div className="w-full h-full flex relative transform-style-3d">
                 
                 {/* 书左半页 (固定) */}
-                <div className="w-1/2 h-full bg-[#FDFBF7] dark:bg-stone-800 rounded-l-md border-y border-l border-[#E1DDD5] dark:border-stone-800 relative shadow-[0_8px_16px_rgba(0,0,0,0.04)] origin-right flex items-center justify-center overflow-hidden">
-                  <div className="w-[85%] h-[85%] border border-[#EEEBE5] dark:border-stone-700 rounded p-2 bg-[#FAF7EE]/50 dark:bg-stone-900/50 flex flex-col justify-between">
-                    <div className="w-full h-1/2 bg-[#E1DDD5]/30 dark:bg-stone-800 rounded" />
+                <div className="w-1/2 h-full bg-[#FDFBF7] rounded-l-md border-y border-l border-[#E1DDD5] relative shadow-[0_8px_16px_rgba(0,0,0,0.04)] origin-right flex items-center justify-center overflow-hidden">
+                  <div className="w-[85%] h-[85%] border border-[#EEEBE5] rounded p-2 bg-[#FAF7EE]/50 flex flex-col justify-between">
+                    <div className="w-full h-1/2 bg-[#E1DDD5]/30 rounded" />
                     <div className="space-y-1">
-                      <div className="w-3/4 h-1.5 bg-[#56534C]/20 dark:bg-stone-700 rounded" />
-                      <div className="w-1/2 h-1 bg-[#56534C]/10 dark:bg-stone-800 rounded" />
+                      <div className="w-3/4 h-1.5 bg-[#56534C]/20 rounded" />
+                      <div className="w-1/2 h-1 bg-[#56534C]/10 rounded" />
                     </div>
                   </div>
                 </div>
@@ -130,39 +130,39 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
                 />
 
                 {/* 书右半页 (翻动页) */}
-                <div className="w-1/2 h-full bg-[#FDFBF7] dark:bg-stone-800 rounded-r-md border-y border-r border-[#E1DDD5] dark:border-stone-800 relative shadow-[0_8px_16px_rgba(0,0,0,0.04)] origin-left transform-style-3d flex items-center justify-center overflow-hidden animate-[page-flip_5s_ease-in-out_infinite]">
-                  <div className="w-[85%] h-[85%] border border-[#EEEBE5] dark:border-stone-700 rounded p-2 bg-[#FAF7EE]/50 dark:bg-stone-900/50 flex flex-col justify-between backface-hidden">
+                <div className="w-1/2 h-full bg-[#FDFBF7] rounded-r-md border-y border-r border-[#E1DDD5] relative shadow-[0_8px_16px_rgba(0,0,0,0.04)] origin-left transform-style-3d flex items-center justify-center overflow-hidden animate-[page-flip_5s_ease-in-out_infinite]">
+                  <div className="w-[85%] h-[85%] border border-[#EEEBE5] rounded p-2 bg-[#FAF7EE]/50 flex flex-col justify-between backface-hidden">
                     <img 
                       src="https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&w=150&q=80" 
                       className="w-full h-[60%] object-cover rounded opacity-80" 
                       alt="3D book preview"
                     />
                     <div className="space-y-1">
-                      <div className="w-full h-1.5 bg-[#56534C]/20 dark:bg-stone-700 rounded" />
-                      <div className="w-4/5 h-1 bg-[#56534C]/10 dark:bg-[#2C3539] rounded" />
+                      <div className="w-full h-1.5 bg-[#56534C]/20 rounded" />
+                      <div className="w-4/5 h-1 bg-[#56534C]/10 rounded" />
                     </div>
                   </div>
                 </div>
 
                 {/* 翻页时的地面阴影随翻动而缩放 */}
-                <div className="absolute bottom-[-10px] left-1/4 w-1/2 h-2.5 bg-black/5 dark:bg-black/20 rounded-full blur-[3px] z-0 animate-[shadow-pulse_5s_ease-in-out_infinite]" />
+                <div className="absolute bottom-[-10px] left-1/4 w-1/2 h-2.5 bg-black/5 rounded-full blur-[3px] z-0 animate-[shadow-pulse_5s_ease-in-out_infinite]" />
               </div>
             </div>
           </div>
         );
       case 3:
         return (
-          <div className="w-full h-full relative bg-[#FAF7EE] dark:bg-stone-900 flex items-center justify-center p-6 overflow-hidden transition-colors duration-300">
+          <div className="w-full h-full relative bg-[#FAF7EE] flex items-center justify-center p-6 overflow-hidden transition-colors duration-300">
             {/* 3D 礼盒与开箱动效 */}
             <div className="relative w-[280px] h-[220px] flex items-center justify-center">
               
               {/* 精美礼盒底座 */}
-              <div className="absolute w-[200px] h-[140px] bg-[#2C3539] dark:bg-stone-950 border-2 border-[#C5A059]/40 rounded-xl shadow-lg flex items-center justify-center transform translate-y-3">
-                <div className="w-[94%] h-[94%] border border-[#C5A059]/20 rounded-lg bg-[#2C3539]/95 dark:bg-stone-900/20 relative overflow-hidden" />
+              <div className="absolute w-[200px] h-[140px] bg-[#2C3539] border-2 border-[#C5A059]/40 rounded-xl shadow-lg flex items-center justify-center transform translate-y-3">
+                <div className="w-[94%] h-[94%] border border-[#C5A059]/20 rounded-lg bg-[#2C3539]/95 relative overflow-hidden" />
               </div>
 
               {/* 从盒子中缓缓滑出的高定精装画册 */}
-              <div className="absolute w-[160px] h-[120px] bg-[#FAF4ED] dark:bg-stone-800 border border-[#C5A059]/30 rounded-lg shadow-2xl flex flex-col justify-between p-3 select-none transform z-10 animate-[book-slide-out_6s_ease-in-out_infinite]">
+              <div className="absolute w-[160px] h-[120px] bg-[#FAF4ED] border border-[#C5A059]/30 rounded-lg shadow-2xl flex flex-col justify-between p-3 select-none transform z-10 animate-[book-slide-out_6s_ease-in-out_infinite]">
                 
                 {/* 书本封面扫光 */}
                 <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
@@ -174,13 +174,13 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
                   <div className="w-5 h-5 border border-[#C5A059]/60 rounded-full flex items-center justify-center text-[#C5A059] text-[8px]">
                     ★
                   </div>
-                  <div className="text-[10px] font-serif font-black tracking-widest text-[#2C3539] dark:text-[#FAF4ED]">拾光集</div>
-                  <div className="text-[5px] tracking-wider text-[#9B978E] dark:text-stone-400 uppercase font-light">Memories Book</div>
+                  <div className="text-[10px] font-serif font-black tracking-widest text-[#2C3539]">拾光集</div>
+                  <div className="text-[5px] tracking-wider text-[#9B978E] uppercase font-light">Memories Book</div>
                 </div>
               </div>
 
               {/* 顺丰快递标签微动效 */}
-              <div className="absolute bottom-5 right-6 px-2.5 py-1 bg-white dark:bg-stone-800 border border-[#EEEBE5] dark:border-stone-700 rounded-md shadow-md text-[8px] font-bold text-[#56534C] dark:text-stone-300 flex items-center gap-1 z-20 rotate-[6deg] animate-[float-tag_5s_ease-in-out_infinite]">
+              <div className="absolute bottom-5 right-6 px-2.5 py-1 bg-white border border-[#EEEBE5] rounded-md shadow-md text-[8px] font-bold text-[#56534C] flex items-center gap-1 z-20 rotate-[6deg] animate-[float-tag_5s_ease-in-out_infinite]">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span>顺丰速运直达</span>
               </div>
@@ -193,7 +193,7 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
   };
 
   return (
-    <div className="w-full h-full min-h-[400px] rounded-2xl overflow-hidden relative z-10 bg-[#FAF7EE]/50 dark:bg-stone-900/50 backdrop-blur-sm flex items-center justify-center border border-[#EEEBE5]/50 dark:border-stone-800/80">
+    <div className="w-full h-full min-h-[400px] rounded-2xl overflow-hidden relative z-10 bg-[#FAF7EE]/50 backdrop-blur-sm flex items-center justify-center border border-[#EEEBE5]/50">
       <style>{`
         @keyframes photo-drag-in {
           0% { transform: translate(60px, 40px) rotate(8deg) scale(0.7); opacity: 0; }
@@ -290,29 +290,29 @@ export function WhyUs() {
   if (isMobile) {
     // 移动端降级方案：垂直上下卡片流，媒体采用零算力损耗的 CSS 微场景 / 原生 `<video>` 兜底播放
     return (
-      <section id="features" className="py-16 px-6 bg-[#F7F4EF] dark:bg-stone-950 space-y-12">
+      <section id="features" className="py-16 px-6 bg-[#F7F4EF] space-y-12">
         <div className="text-center space-y-2">
           <span className="text-xs uppercase tracking-widest text-[#C5A059] font-black">WHY TIMECOLLATE</span>
-          <h2 className="text-3xl font-serif text-[#2C3539] dark:text-stone-100 font-bold">为什么选择拾光集</h2>
+          <h2 className="text-3xl font-serif text-[#2C3539] font-bold">为什么选择拾光集</h2>
         </div>
         
         <div className="space-y-8">
           {values.map((item) => (
-            <div key={item.id} className="bg-[#FDFBF7]/90 dark:bg-stone-900/90 backdrop-blur-md rounded-2xl p-6 border border-[#EEEBE5] dark:border-stone-800/80 shadow-sm space-y-4">
+            <div key={item.id} className="bg-[#FDFBF7]/90 backdrop-blur-md rounded-2xl p-6 border border-[#EEEBE5] shadow-sm space-y-4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#FAF4ED] dark:bg-stone-800 rounded-xl text-[#C5A059]">
+                <div className="p-2.5 bg-[#FAF4ED] rounded-xl text-[#C5A059]">
                   {item.icon}
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-[#2C3539] dark:text-stone-200">{item.title}</h3>
+                  <h3 className="text-lg font-bold text-[#2C3539]">{item.title}</h3>
                   <p className="text-[9px] text-[#9B978E] tracking-wider uppercase font-light">{item.subTitle}</p>
                 </div>
               </div>
-              <p className="text-sm text-[#56534C] dark:text-stone-400 font-medium leading-relaxed">
+              <p className="text-sm text-[#56534C] font-medium leading-relaxed">
                 {item.desc}
               </p>
               
-              <div className="w-full aspect-[16/10] bg-[#FAF7EE] dark:bg-stone-900/60 rounded-xl overflow-hidden relative border border-[#EEEBE5]/40 dark:border-stone-800/50">
+              <div className="w-full aspect-[16/10] bg-[#FAF7EE] rounded-xl overflow-hidden relative border border-[#EEEBE5]/40">
                 <ValueShowcasePanel activeTab={item.id} />
               </div>
             </div>
@@ -324,7 +324,7 @@ export function WhyUs() {
 
   // PC 端奢华互动方案：左右联动的交互大秀场
   return (
-    <section id="features" className="py-24 px-6 sm:px-12 lg:px-20 bg-gradient-to-b from-[#F7F4EF] via-[#FAF7EE]/30 to-[#F7F4EF] dark:from-stone-950 dark:via-stone-900/30 dark:to-stone-950 border-t border-[#EEEBE5]/50 dark:border-stone-900/50 overflow-hidden">
+    <section id="features" className="py-24 px-6 sm:px-12 lg:px-20 bg-gradient-to-b from-[#F7F4EF] via-[#FAF7EE]/30 to-[#F7F4EF] border-t border-[#EEEBE5]/50 overflow-hidden">
       
       {/* 动态微粒底纹 */}
       <div className="absolute inset-0 opacity-[0.01] pointer-events-none mix-blend-overlay" style={{
@@ -337,16 +337,16 @@ export function WhyUs() {
             <Activity size={14} />
             <span>WHY TIMECOLLATE</span>
           </div>
-          <h2 className="text-4xl md:text-5xl font-serif tracking-tight text-[#2C3539] dark:text-stone-100 font-bold">
+          <h2 className="text-4xl md:text-5xl font-serif tracking-tight text-[#2C3539] font-bold">
             技术与人文交织的三大壁垒
           </h2>
         </div>
 
         <div className="grid grid-cols-12 gap-12 items-center">
           {/* 左侧：动态视觉秀场区 */}
-          <div className="col-span-6 bg-white dark:bg-stone-900/80 p-4 rounded-[32px] border border-[#EEEBE5] dark:border-stone-800 shadow-xl shadow-stone-100/50 dark:shadow-none min-h-[450px] flex items-center justify-center relative overflow-hidden group">
+          <div className="col-span-6 bg-white p-4 rounded-[32px] border border-[#EEEBE5] shadow-xl shadow-stone-100/50 min-h-[450px] flex items-center justify-center relative overflow-hidden group">
             {/* 流态玻璃微光背景 */}
-            <div className="absolute -inset-10 bg-gradient-to-tr from-[#FAF4ED] via-transparent to-[#FAF7EE] dark:from-[#C5A059]/5 dark:to-transparent blur-3xl opacity-70 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="absolute -inset-10 bg-gradient-to-tr from-[#FAF4ED] via-transparent to-[#FAF7EE] blur-3xl opacity-70 group-hover:opacity-100 transition-opacity duration-700" />
             
             {/* 动态内容容器：加载视频，并在失败时渲染拟物微场景 */}
             <ValueShowcasePanel activeTab={activeTab} />
@@ -362,29 +362,29 @@ export function WhyUs() {
                   onMouseEnter={() => setActiveTab(item.id)}
                   className={`p-6 rounded-2xl border transition-all duration-300 cursor-pointer ${
                     isActive
-                      ? 'bg-white dark:bg-stone-900 border-[#C5A059]/30 dark:border-[#C5A059]/30 shadow-lg shadow-[#C5A059]/5 translate-x-2'
-                      : 'bg-transparent border-transparent hover:bg-[#FAF7EE]/50 dark:hover:bg-stone-900/30'
+                      ? 'bg-white border-[#C5A059]/30 shadow-lg shadow-[#C5A059]/5 translate-x-2'
+                      : 'bg-transparent border-transparent hover:bg-[#FAF7EE]/50'
                   }`}
                 >
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-xl transition-all duration-350 ${
-                      isActive ? 'bg-[#C5A059] text-white' : 'bg-[#FAF4ED] dark:bg-stone-800 text-[#C5A059]'
+                      isActive ? 'bg-[#C5A059] text-white' : 'bg-[#FAF4ED] text-[#C5A059]'
                     }`}>
                       {item.icon}
                     </div>
                     <div className="space-y-1 flex-1">
                       <div className="flex flex-col">
                         <span className={`text-[10px] uppercase tracking-widest font-semibold transition-colors ${
-                          isActive ? 'text-[#C5A059]' : 'text-[#9B978E] dark:text-stone-500'
+                          isActive ? 'text-[#C5A059]' : 'text-[#9B978E]'
                         }`}>{item.subTitle}</span>
-                        <h3 className="text-xl font-bold text-[#2C3539] dark:text-stone-150 mt-0.5">{item.title}</h3>
+                        <h3 className="text-xl font-bold text-[#2C3539] mt-0.5">{item.title}</h3>
                       </div>
                       
                       {/* 高度平滑展开动效，响应 activeTab 释放描述 */}
                       <div className={`transition-all duration-350 overflow-hidden ${
                         isActive ? 'max-h-40 opacity-100 mt-2.5' : 'max-h-0 opacity-0'
                       }`}>
-                        <p className="text-sm text-[#56534C] dark:text-stone-400 font-medium leading-relaxed">
+                        <p className="text-sm text-[#56534C] font-medium leading-relaxed">
                           {item.desc}
                         </p>
                       </div>
