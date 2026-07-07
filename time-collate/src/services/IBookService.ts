@@ -129,6 +129,11 @@ export interface IBookService {
     ): Promise<any>;
 
     /**
+     * 获取单页面模板发布来源的书籍和页面 ID
+     */
+    getTemplateOrigin(templateId: string): Promise<{ bookId: string; pageId: string } | null>;
+
+    /**
      * 累加页面模板套用次数
      */
     usePageTemplate(templateId: string): Promise<void>;

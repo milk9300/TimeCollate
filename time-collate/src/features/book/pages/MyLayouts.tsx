@@ -113,14 +113,19 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
         return (t.layoutSchema?.elements?.filter(e => e.type === 'photo').length || 0) > 1;
     }).length;
 
-    // 进入排版设计器 - 新建模式
-    const handleCreateLayout = () => {
-        navigate('/editor/template/new');
-    };
-
     // 进入排版设计器 - 编辑模式
-    const handleEditLayout = (templateId: string) => {
-        navigate(`/editor/template/${templateId}`);
+    const handleEditLayout = async (templateId: string) => {
+        try {
+            const origin = await bookService.getTemplateOrigin(templateId);
+            if (origin && origin.bookId) {
+                navigate(`/editor/${origin.bookId}?pageId=${origin.pageId}`);
+            } else {
+                alert('该自定义模板没有关联的来源页面，可能发布源相册已被删除，无法继续编辑。');
+            }
+        } catch (error) {
+            console.error('Failed to get template origin:', error);
+            alert('获取模板源失败，可能发布该模板的相册页已被删除。');
+        }
     };
 
     // 触发删除弹窗
@@ -184,24 +189,7 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
                             <span className="text-slate-400 text-xs font-black tracking-wider uppercase animate-pulse">正在同步排版库...</span>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                            {/* 首个常驻卡片：极简新建卡片 */}
-                            <button
-                                onClick={handleCreateLayout}
-                                className="w-full aspect-[3/4] sm:aspect-auto sm:h-full min-h-[350px] bg-slate-50/50 hover:bg-indigo-50/30 rounded-[28px] border-2 border-dashed border-indigo-200/50 hover:border-indigo-500/50 flex flex-col items-center justify-center p-6 transition-all duration-300 hover:scale-[1.02] group cursor-pointer shadow-sm hover:shadow-[0_16px_36px_-6px_rgba(79,70,229,0.08)] relative"
-                                style={{ border: '2px dashed rgba(111, 94, 241, 0.3)' }}
-                            >
-                                <div className="absolute inset-4 rounded-[20px] border border-slate-200/40 pointer-events-none group-hover:border-indigo-200/20 transition-all duration-300" />
-                                <div className="flex flex-col items-center gap-3.5 z-10">
-                                    <div className="w-12 h-12 rounded-full bg-white text-indigo-500 flex items-center justify-center shadow-sm border border-slate-100 group-hover:bg-gradient-to-tr group-hover:from-indigo-600 group-hover:to-violet-600 group-hover:text-white transition-all duration-300">
-                                        <Plus size={24} strokeWidth={1.5} className="group-hover:rotate-90 transition-transform duration-300" />
-                                    </div>
-                                    <div className="text-center">
-                                        <span className="block text-xs font-black text-slate-700 group-hover:text-indigo-600 transition-colors">新建排版模板</span>
-                                        <span className="block text-[10px] font-bold text-slate-400 mt-1.5">从空白画纸开始自由构建</span>
-                                    </div>
-                                </div>
-                            </button>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
 
                             {/* 用户的自定义排版卡片列表 */}
                             {myTemplates.map((tpl) => (
@@ -280,21 +268,29 @@ export function MyLayouts({ isEmbed = false }: { isEmbed?: boolean }) {
                 <TemplatePreviewModal
                     template={previewTemplate}
                     onClose={() => setPreviewTemplate(null)}
-                    themes={BUILTIN_THEMES}
                     actionButton={
-                        <div className="w-full flex gap-3">
+                        <div className="w-full flex gap-2">
+                            <button
+                                onClick={async () => {
+                                    setPreviewTemplate(null);
+                                    await handleEditLayout(previewTemplate.id);
+                                }}
+                                className="flex-grow py-2.5 bg-indigo-600 hover:bg-indigo-750 text-white rounded-xl text-xs font-bold transition-all text-center cursor-pointer shadow-xs"
+                            >
+                                编辑排版
+                            </button>
                             <button
                                 onClick={() => {
-                                    handleEditLayout(previewTemplate.id);
                                     setPreviewTemplate(null);
+                                    handleDeleteTrigger(previewTemplate.id, previewTemplate.name);
                                 }}
-                                className="flex-1 py-3 bg-indigo-650 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs transition-all shadow-md shadow-indigo-605/10 text-center cursor-pointer font-bold"
+                                className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-all text-center cursor-pointer border border-rose-150"
                             >
-                                编辑此模板
+                                删除
                             </button>
                             <button
                                 onClick={() => setPreviewTemplate(null)}
-                                className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-xs transition-all cursor-pointer font-bold"
+                                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
                             >
                                 关闭
                             </button>

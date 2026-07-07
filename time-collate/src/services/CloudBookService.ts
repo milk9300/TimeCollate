@@ -221,6 +221,11 @@ export class CloudBookService implements IBookService {
         return response.data.data;
     }
 
+    async getTemplateOrigin(templateId: string): Promise<{ bookId: string; pageId: string } | null> {
+        const response = await this.api.get(`/templates/${templateId}/origin`);
+        return response.data.data;
+    }
+
     async usePageTemplate(templateId: string): Promise<void> {
         await this.api.post(`/templates/${templateId}/use`);
     }

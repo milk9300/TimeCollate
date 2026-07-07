@@ -329,6 +329,11 @@ export class LocalBookService implements IBookService {
         return {};
     }
 
+    async getTemplateOrigin(): Promise<any> {
+        await this.delay();
+        return null;
+    }
+
     async usePageTemplate(): Promise<void> {
         await this.delay();
     }

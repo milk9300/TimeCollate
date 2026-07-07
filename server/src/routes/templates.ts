@@ -294,6 +294,41 @@ router.post('/publish-page', authMiddleware, async (req, res) => {
 });
 
 /**
+ * GET /api/templates/:id/origin
+ * 获取单页面模板发布来源的书籍和页面 ID
+ */
+router.get('/:id/origin', authMiddleware, async (req, res) => {
+    try {
+        const id = req.params.id;
+        const template = await templateService.getTemplateById(id);
+        if (!template) {
+            return res.status(404).json({ success: false, error: '模板不存在' });
+        }
+
+        if (!template.templateOriginId || template.templateOriginType !== 'PAGE') {
+            return res.status(404).json({ success: false, error: '该模板没有关联的来源页面' });
+        }
+
+        // 查询来源页面所在的 book_id
+        const [pages]: any[] = await pool.query(
+            'SELECT book_id FROM pages WHERE id = ?',
+            [template.templateOriginId]
+        );
+
+        if (pages.length === 0) {
+            return res.status(404).json({ success: false, error: '来源页面已被删除' });
+        }
+
+        sendSuccess(res, {
+            bookId: pages[0].book_id,
+            pageId: template.templateOriginId
+        });
+    } catch (error) {
+        sendError(res, error as Error);
+    }
+});
+
+/**
  * POST /api/templates/:id/use
  * 增加单页模板的套用次数计数 (供前端在拖入应用模板时调用)
  */

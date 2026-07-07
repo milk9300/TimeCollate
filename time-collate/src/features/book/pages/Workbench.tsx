@@ -37,6 +37,7 @@ import { Market } from './Market';
 import { MyBookTemplates } from './MyBookTemplates';
 import { MyLayouts } from './MyLayouts';
 import { AssetCenter } from '../../assets/pages/AssetCenter';
+import { MyCollections } from '../components/MyCollections';
 
 const bookService = getBookService();
 
@@ -51,8 +52,8 @@ export function Workbench() {
     
     // 获取当前的主 tab (books | designs | resources)
     const activeTab = searchParams.get('tab') || 'books';
-    // 设计 Tab 下的二级 Tab (pageTemplates | bookTemplates)
-    const [designSubTab, setDesignSubTab] = useState<'pageTemplates' | 'bookTemplates'>('pageTemplates');
+    // 设计 Tab 下的二级 Tab (pageTemplates | bookTemplates | templateCollections)
+    const [designSubTab, setDesignSubTab] = useState<'pageTemplates' | 'bookTemplates' | 'templateCollections'>('pageTemplates');
     const [pageTemplateSegment, setPageTemplateSegment] = useState<'preset' | 'my'>('preset');
 
     // 书籍列表数据与状态
@@ -591,15 +592,22 @@ export function Workbench() {
                                     onClick={() => setDesignSubTab('pageTemplates')}
                                     className={`pb-3 relative cursor-pointer ${designSubTab === 'pageTemplates' ? 'text-indigo-650 font-black' : 'hover:text-slate-650'}`}
                                 >
-                                    <span>页面</span>
+                                    <span>页</span>
                                     {designSubTab === 'pageTemplates' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
                                 </button>
                                 <button 
                                     onClick={() => setDesignSubTab('bookTemplates')}
                                     className={`pb-3 relative cursor-pointer ${designSubTab === 'bookTemplates' ? 'text-indigo-650 font-black' : 'hover:text-slate-650'}`}
                                 >
-                                    <span>整书</span>
+                                    <span>书</span>
                                     {designSubTab === 'bookTemplates' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
+                                </button>
+                                <button 
+                                    onClick={() => setDesignSubTab('templateCollections')}
+                                    className={`pb-3 relative cursor-pointer ${designSubTab === 'templateCollections' ? 'text-indigo-650 font-black' : 'hover:text-slate-650'}`}
+                                >
+                                    <span>合集</span>
+                                    {designSubTab === 'templateCollections' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />}
                                 </button>
                             </div>
 
@@ -611,6 +619,10 @@ export function Workbench() {
 
                                 {designSubTab === 'bookTemplates' && (
                                     <MyBookTemplates isEmbed={true} />
+                                )}
+
+                                {designSubTab === 'templateCollections' && (
+                                    <MyCollections isEmbed={true} />
                                 )}
                             </div>
                         </div>
