@@ -344,11 +344,22 @@ export function flattenChapters(chapters: Chapter[], bookId: string, originalPag
 }
 // #endregion
 
+let lastCaptureTime = 0;
+
 export const useBookStore = create<BookState>((set, get) => {
-    // 异步生成并上传书籍当前被激活文档的缩略图
-    const triggerAsyncThumbnailUpdate = async (bookId: string) => {
+    // 异步生成并上传书籍当前被激活文档 of 缩略图 (带冷却 Cooldown 降频)
+    const triggerAsyncThumbnailUpdate = async (bookId: string, force = false) => {
         const { activeDocumentId } = get();
-        console.log('📷 [Thumbnail] triggerAsyncThumbnailUpdate triggered for bookId:', bookId, 'activeDocumentId:', activeDocumentId);
+        
+        const now = Date.now();
+        // 只有非强制更新，且距离上次截图不足 15 秒时触发 Cooldown
+        if (!force && (now - lastCaptureTime < 15000)) {
+            console.log('📷 [Thumbnail] Cooldown active (last captured', now - lastCaptureTime, 'ms ago), skipping canvas snapshot.');
+            return;
+        }
+        
+        lastCaptureTime = now;
+        console.log('📷 [Thumbnail] triggerAsyncThumbnailUpdate triggered for bookId:', bookId, 'activeDocumentId:', activeDocumentId, 'force:', force);
         
         const isCover = activeDocumentId === 'cover';
         const elementId = isCover ? 'book-cover-page-capture-container' : 'editor-active-page-canvas';
@@ -372,7 +383,7 @@ export const useBookStore = create<BookState>((set, get) => {
             }
 
             console.log('📷 [Thumbnail] Uploading thumbnail to OSS...');
-            const uploadResult = await uploadCoverThumbnail(bookId, blob);
+            const uploadResult = await uploadCoverThumbnail(bookId, blob, isCover ? undefined : activeDocumentId);
             console.log('📷 [Thumbnail] Upload result from OSS:', uploadResult);
             if (!uploadResult) {
                 set({ thumbnailStatus: 'FAILED' });
@@ -1392,7 +1403,7 @@ export const useBookStore = create<BookState>((set, get) => {
                     });
                 }
                 set({ saveStatus: 'saved' });
-                triggerAsyncThumbnailUpdate(currentBook.id);
+                triggerAsyncThumbnailUpdate(currentBook.id, true);
             } catch (e) {
                 console.error('Failed to manually save book state', e);
                 set({ saveStatus: 'error' });

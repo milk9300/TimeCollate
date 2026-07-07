@@ -46,15 +46,18 @@ export async function captureCoverToBlob(element: HTMLElement): Promise<Blob | n
  */
 export async function uploadCoverThumbnail(
     bookId: string,
-    blob: Blob
+    blob: Blob,
+    pageId?: string
 ): Promise<{ url: string; ossKey: string } | null> {
     try {
-        const customKey = `uploads/books/${bookId}/cover.webp`;
+        const customKey = pageId 
+            ? `uploads/books/${bookId}/pages/${pageId}.webp`
+            : `uploads/books/${bookId}/cover.webp`;
 
         // 1. 请求后端的预签名直传凭证（使用全局 axios 触发，以携带 Token 与 API 相对前缀）
         const res = await axios.get('/upload/presigned', {
             params: {
-                fileName: 'cover.webp',
+                fileName: pageId ? `${pageId}.webp` : 'cover.webp',
                 contentType: 'image/webp',
                 customKey,
             },

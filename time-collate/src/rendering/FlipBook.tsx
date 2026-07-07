@@ -9,6 +9,7 @@ import axios from 'axios';
 import { getVirtualChapters } from '../store';
 import { useAuthStore } from '../store/useAuthStore';
 import { socialService, type Comment } from '../services/socialService';
+import { getResizeImageUrl } from '../utils/coverCaptureHelper';
 
 // #region Helper to extract physical image URL from coverUrl design protocol
 function getRealCoverImageUrl(coverUrl: string | undefined): string | undefined {
@@ -58,6 +59,13 @@ const PageComponent = forwardRef<HTMLDivElement, PageComponentProps>(
     ({ pageData, pageSize, pageNumber, totalPages, book, side, isVirtualActive = true }, ref) => {
         const dimensions = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
 
+        const thumbnailUrl = useMemo(() => {
+            if (pageData.page.templateId === 'book-cover') {
+                return getRealCoverImageUrl(book.coverUrl) || pageData.page.thumbnail;
+            }
+            return pageData.page.thumbnail;
+        }, [pageData.page.thumbnail, pageData.page.templateId, book.coverUrl]);
+
         return (
             <div
                 ref={ref}
@@ -98,36 +106,46 @@ const PageComponent = forwardRef<HTMLDivElement, PageComponentProps>(
                     }}
                 />
 
-                {isVirtualActive ? (
-                    <BookRenderer
-                        page={pageData.page}
-                        pageSize={pageSize}
-                        chapterTitle={pageData.chapterTitle}
-                        chapterDate={pageData.chapterDate}
-                        chapterIndex={pageData.chapterIndex}
-                        book={book}
-                        readOnly={true}
-                        side={side}
-                    />
-                ) : (
-                    // 动态虚拟化占位骨架屏
-                    <div className="absolute inset-0 flex items-center justify-center bg-[#FAF9F6]">
-                        {pageData.page.templateId === 'book-cover' && getRealCoverImageUrl(book.coverUrl) ? (
-                            <img 
-                                src={getRealCoverImageUrl(book.coverUrl)} 
-                                alt="cover-preload" 
-                                className="w-full h-full object-cover opacity-50 blur-[2px]" 
-                            />
-                        ) : (
-                            <div className="animate-pulse flex flex-col items-center gap-4 w-[60%] opacity-20">
-                                <div className="h-4 bg-slate-200 rounded w-1/3" />
-                                <div className="h-28 bg-slate-200 rounded w-full" />
-                                <div className="space-y-2 w-full">
-                                    <div className="h-3 bg-slate-200 rounded" />
-                                    <div className="h-3 bg-slate-200 rounded w-[80%]" />
-                                </div>
+                {/* 1. 静态背景模糊图层：无论 active 与否，只要有缩略图就用缩略图打底，没有则用轻量米白背景 */}
+                <div className="absolute inset-0 z-0 bg-[#FAF9F6] select-none pointer-events-none">
+                    {thumbnailUrl ? (
+                        <img
+                            src={getResizeImageUrl(thumbnailUrl, 300)}
+                            alt={`page-${pageNumber}-placeholder`}
+                            className="w-full h-full object-cover opacity-75 blur-[5px] scale-102 transition-opacity duration-300"
+                        />
+                    ) : (
+                        <div className="w-full h-full bg-[#FAF9F6]" />
+                    )}
+                </div>
+
+                {/* 2. 真实 DOM 渲染层：当 isVirtualActive 为 true 时渲染，使用 3D 渲染层并在上层淡入 */}
+                {isVirtualActive && (
+                    <div className="absolute inset-0 z-10 animate-page-fade-in">
+                        <BookRenderer
+                            page={pageData.page}
+                            pageSize={pageSize}
+                            chapterTitle={pageData.chapterTitle}
+                            chapterDate={pageData.chapterDate}
+                            chapterIndex={pageData.chapterIndex}
+                            book={book}
+                            readOnly={true}
+                            side={side}
+                        />
+                    </div>
+                )}
+
+                {/* 3. 动态占位骨架屏：仅在非活跃且连缩略图都没有时，展示骨架屏 */}
+                {!isVirtualActive && !thumbnailUrl && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#FAF9F6]/80">
+                        <div className="animate-pulse flex flex-col items-center gap-4 w-[60%] opacity-20">
+                            <div className="h-4 bg-slate-200 rounded w-1/3" />
+                            <div className="h-28 bg-slate-200 rounded w-full" />
+                            <div className="space-y-2 w-full">
+                                <div className="h-3 bg-slate-200 rounded" />
+                                <div className="h-3 bg-slate-200 rounded w-[80%]" />
                             </div>
-                        )}
+                        </div>
                     </div>
                 )}
 
@@ -511,6 +529,19 @@ export const FlipBook: React.FC<FlipBookProps> = ({ book, onClose, isPublicView,
                 ref={containerRef}
                 className="fixed inset-0 z-50 bg-gradient-to-br from-[#FAF9F6] via-[#F3F2EE] to-[#E5E4DF] flex flex-col overflow-hidden select-none"
             >
+                {/* 局部淡入动画样式注入 */}
+                <style>
+                    {`
+                    @keyframes fadeInEffect {
+                        from { opacity: 0; }
+                        to { opacity: 1; }
+                    }
+                    .animate-page-fade-in {
+                        animation: fadeInEffect 0.3s ease-out forwards;
+                    }
+                    `}
+                </style>
+
                 {/* 沉浸式高斯模糊背景层 */}
                 {getRealCoverImageUrl(book.coverUrl) && (
                     <div 
