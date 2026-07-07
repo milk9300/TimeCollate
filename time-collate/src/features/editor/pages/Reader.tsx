@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
 import { getBookService } from '../../../services/serviceFactory';
-import type { Book } from '../../../types';
+import type { Book, Page } from '../../../types';
 import { FlipBook } from '../../../rendering/FlipBook';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -39,9 +39,27 @@ export const Reader: React.FC = () => {
                 ]);
 
                 if (data) {
+                    const coverPage: Page = data.cover ? {
+                        id: data.cover.id || 'virtual-cover',
+                        content: '',
+                        photos: [],
+                        templateId: 'book-cover',
+                        pageType: 'cover',
+                        elements: data.cover.frontElements || [],
+                        background: data.cover.frontBackground || { color: '#FAF8E7' }
+                    } : {
+                        id: 'virtual-cover',
+                        content: '',
+                        photos: [],
+                        templateId: 'book-cover',
+                        pageType: 'cover',
+                        elements: [],
+                        background: { color: '#FAF8E7' }
+                    };
+
                     setBook({
                         ...data.book,
-                        pages: data.pages
+                        pages: [coverPage, ...data.pages]
                     });
                 } else {
                     setError('无法加载该书籍');

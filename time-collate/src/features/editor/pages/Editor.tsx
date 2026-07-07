@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { parseCoverUrl } from '../components/GeneratedCover';
 import { getBookService } from '../../../services/serviceFactory';
-import type { Book, Template } from '../../../types';
+import type { Book, Template, Page } from '../../../types';
 import axios from 'axios';
 
 const bookService = getBookService();
@@ -553,9 +553,32 @@ export function Editor() {
                 <UploadProgressBar />
 
                 {/* 3D Flip Book reader layer */}
-                {isReadMode && (
+                {isReadMode && currentBook && (
                     <FlipBook
-                        book={currentBook}
+                        book={(() => {
+                            const coverDoc = useBookStore.getState().documents.find(d => d.type === 'cover');
+                            const coverPage: Page = coverDoc ? {
+                                id: coverDoc.id || 'virtual-cover',
+                                content: '',
+                                photos: [],
+                                templateId: 'book-cover',
+                                pageType: 'cover',
+                                elements: coverDoc.elements || [],
+                                background: coverDoc.background || { color: '#FAF8E7' }
+                            } : {
+                                id: 'virtual-cover',
+                                content: '',
+                                photos: [],
+                                templateId: 'book-cover',
+                                pageType: 'cover',
+                                elements: [],
+                                background: { color: '#FAF8E7' }
+                            };
+                            return {
+                                ...currentBook,
+                                pages: [coverPage, ...(currentBook.pages || [])]
+                            };
+                        })()}
                         onClose={() => setIsReadMode(false)}
                     />
                 )}

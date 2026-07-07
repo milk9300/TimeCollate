@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { BookOpen } from 'lucide-react';
-import type { Book } from '../../../types';
+import type { Book, Page } from '../../../types';
 import { FlipBook } from '../../../rendering/FlipBook';
 import { ThemeProvider } from '../../../rendering/ThemeManager';
 
@@ -19,7 +19,33 @@ export const SharedBookViewer: React.FC = () => {
             try {
                 const response = await axios.get(`/share/${slug}`);
                 if (response.data.success) {
-                    setBook(response.data.data);
+                    const data = response.data.data;
+                    if (data) {
+                        const coverPage: Page = data.cover ? {
+                            id: data.cover.id || 'virtual-cover',
+                            content: '',
+                            photos: [],
+                            templateId: 'book-cover',
+                            pageType: 'cover',
+                            elements: data.cover.frontElements || [],
+                            background: data.cover.frontBackground || { color: '#FAF8E7' }
+                        } : {
+                            id: 'virtual-cover',
+                            content: '',
+                            photos: [],
+                            templateId: 'book-cover',
+                            pageType: 'cover',
+                            elements: [],
+                            background: { color: '#FAF8E7' }
+                        };
+
+                        setBook({
+                            ...data.book,
+                            pages: [coverPage, ...data.pages]
+                        });
+                    } else {
+                        setError('分享的书籍数据异常');
+                    }
                 } else {
                     setError('无法加载分享的书籍');
                 }
