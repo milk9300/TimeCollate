@@ -99,7 +99,7 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
                     const x2 = 50 + 50 * Math.sin(angleRad);
                     const y2 = 50 - 50 * Math.cos(angleRad);
                     
-                    const gradId = `grad-${element.id}`;
+                    const gradId = `grad-${element.id.replace(/[^a-zA-Z0-9]/g, '')}`;
                     fillVal = `url(#${gradId})`;
                     gradientDef = (
                         <defs>

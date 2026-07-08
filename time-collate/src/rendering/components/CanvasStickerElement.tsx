@@ -129,30 +129,31 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
 
         const renderSvgWithColor = (svgNode: React.ReactNode) => {
             if (isGrad && grad) {
-                const gradId = `sticker-grad-${element.id}`;
+                const safeId = `sticker-grad-${element.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+                const safeClass = `s-wrapper-${element.id.replace(/[^a-zA-Z0-9]/g, '')}`;
                 return (
-                    <div className={`gradient-sticker-wrapper-${element.id} w-full h-full relative`}>
+                    <div className={`${safeClass} w-full h-full relative`}>
                         <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }} aria-hidden="true">
                             <defs>
-                                <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                                <linearGradient id={safeId} x1="0%" y1="0%" x2="100%" y2="100%">
                                     <stop offset="0%" stopColor={grad.from} />
                                     <stop offset="100%" stopColor={grad.to} />
                                 </linearGradient>
                             </defs>
                         </svg>
                         <style dangerouslySetInnerHTML={{ __html: `
-                            .gradient-sticker-wrapper-${element.id} svg path:not([fill="none"]),
-                            .gradient-sticker-wrapper-${element.id} svg circle:not([fill="none"]),
-                            .gradient-sticker-wrapper-${element.id} svg polygon:not([fill="none"]),
-                            .gradient-sticker-wrapper-${element.id} svg rect:not([fill="none"]) {
-                                fill: url(#${gradId}) !important;
+                            .${safeClass} svg path:not([fill="none"]),
+                            .${safeClass} svg circle:not([fill="none"]),
+                            .${safeClass} svg polygon:not([fill="none"]),
+                            .${safeClass} svg rect:not([fill="none"]) {
+                                fill: url(#${safeId}) !important;
                             }
-                            .gradient-sticker-wrapper-${element.id} svg line,
-                            .gradient-sticker-wrapper-${element.id} svg path[stroke]:not([stroke="none"]),
-                            .gradient-sticker-wrapper-${element.id} svg circle[stroke]:not([stroke="none"]),
-                            .gradient-sticker-wrapper-${element.id} svg polygon[stroke]:not([stroke="none"]),
-                            .gradient-sticker-wrapper-${element.id} svg rect[stroke]:not([stroke="none"]) {
-                                stroke: url(#${gradId}) !important;
+                            .${safeClass} svg line,
+                            .${safeClass} svg path[stroke]:not([stroke="none"]),
+                            .${safeClass} svg circle[stroke]:not([stroke="none"]),
+                            .${safeClass} svg polygon[stroke]:not([stroke="none"]),
+                            .${safeClass} svg rect[stroke]:not([stroke="none"]) {
+                                stroke: url(#${safeId}) !important;
                             }
                         `}} />
                         {svgNode}
