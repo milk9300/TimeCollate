@@ -4,6 +4,7 @@ import { useBookStore } from '../../store';
 import { getVirtualDimensions } from '../PhysicalConstants';
 import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 import { useCanvasElementTransform } from '../../features/editor/hooks/useCanvasElementTransform';
+import { isGradientColor, parseGradient } from '../../utils/colorUtils';
 
 interface CanvasShapeElementProps {
     element: ShapeElement;
@@ -72,6 +73,9 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
     };
 
     const renderShapeContent = () => {
+        const isGrad = isGradientColor(fillColor);
+        const grad = isGrad ? parseGradient(fillColor) : null;
+
         switch (shapeType) {
             case 'circle':
                 return (
@@ -80,22 +84,44 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
                             width: '100%',
                             height: '100%',
                             borderRadius: '50%',
-                            backgroundColor: fillColor,
+                            background: fillColor,
                             border: `${borderWidth}px solid ${borderColor}`,
                         }}
                     />
                 );
-            case 'triangle':
+            case 'triangle': {
+                let fillVal = fillColor;
+                let gradientDef = null;
+                if (isGrad && grad) {
+                    const angleRad = (grad.angle * Math.PI) / 180;
+                    const x1 = 50 - 50 * Math.sin(angleRad);
+                    const y1 = 50 + 50 * Math.cos(angleRad);
+                    const x2 = 50 + 50 * Math.sin(angleRad);
+                    const y2 = 50 - 50 * Math.cos(angleRad);
+                    
+                    const gradId = `grad-${element.id}`;
+                    fillVal = `url(#${gradId})`;
+                    gradientDef = (
+                        <defs>
+                            <linearGradient id={gradId} x1={`${x1}%`} y1={`${y1}%`} x2={`${x2}%`} y2={`${y2}%`}>
+                                <stop offset="0%" stopColor={grad.from} />
+                                <stop offset="100%" stopColor={grad.to} />
+                            </linearGradient>
+                        </defs>
+                    );
+                }
                 return (
                     <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        {gradientDef}
                         <polygon
                             points="50,5 95,95 5,95"
-                            fill={fillColor}
+                            fill={fillVal}
                             stroke={borderColor}
                             strokeWidth={borderWidth}
                         />
                     </svg>
                 );
+            }
             case 'line':
                 return (
                     <svg width="100%" height="100%" viewBox="0 0 100 10" preserveAspectRatio="none">
@@ -116,7 +142,7 @@ export const CanvasShapeElement: React.FC<CanvasShapeElementProps> = ({
                         style={{
                             width: '100%',
                             height: '100%',
-                            backgroundColor: fillColor,
+                            background: fillColor,
                             border: `${borderWidth}px solid ${borderColor}`,
                         }}
                     />

@@ -1,5 +1,12 @@
 import { isGradientColor, parseGradient, serializeGradient } from './colorUtils';
-import assert from 'assert';
+
+const assert = {
+    strictEqual: (a: any, b: any) => {
+        if (a !== b) {
+            throw new Error(`Assertion failed: ${a} !== ${b}`);
+        }
+    }
+};
 
 console.log('🧪 Testing color utilities...');
 

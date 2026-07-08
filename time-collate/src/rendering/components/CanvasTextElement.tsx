@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { TextElement, CanvasElement } from '../../types';
 import { useBookStore } from '../../store';
+import { isGradientColor } from '../../utils/colorUtils';
 import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 import { editorFacade } from '../../features/editor/runtime/EditorFacade';
 import { eventBus } from '../../features/editor/runtime/eventBus';
@@ -298,17 +299,22 @@ export const CanvasTextElement: React.FC<CanvasTextElementProps> = ({
         pointerEvents: readOnly ? 'none' : 'auto',
     };
 
+    const isGrad = !isEditing && isGradientColor(textConfig.color || '');
+
     // 文本排版样式
     const textStyle: React.CSSProperties = {
         fontFamily: resolvedFontFamily,
         fontSize: textConfig.fontSize || '14px',
         fontWeight: textConfig.fontWeight || 'normal',
         fontStyle: textConfig.fontStyle || 'normal',
-        color: isEditing ? '#1f2937' : (textConfig.color || '#334155'),
+        color: isEditing ? '#1f2937' : (isGrad ? 'transparent' : (textConfig.color || '#334155')),
+        background: isGrad ? textConfig.color : undefined,
+        WebkitBackgroundClip: isGrad ? 'text' : undefined,
+        WebkitTextFillColor: isGrad ? 'transparent' : undefined,
         textAlign: textConfig.textAlign || 'left',
         lineHeight: textConfig.lineHeight || 1.6,
         letterSpacing: textConfig.letterSpacing || '0px',
-        width: '100%',
+        width: '105%', // 稍微扩宽防止渐变字右边缘被少量截断
         height: 'auto',
         wordBreak: 'break-word',
     };
