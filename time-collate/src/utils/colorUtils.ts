@@ -213,3 +213,50 @@ export const parseColor = (colorStr: string): ColorState => {
         return fallback;
     }
 };
+
+/**
+ * 判断是否为渐变色
+ */
+export const isGradientColor = (color: string): boolean => {
+    return typeof color === 'string' && color.trim().toLowerCase().startsWith('linear-gradient');
+};
+
+/**
+ * 解析线性渐变字符串
+ */
+export const parseGradient = (colorStr: string): { angle: number; from: string; to: string } => {
+    const fallback = { angle: 180, from: '#667EEA', to: '#764BA2' };
+    if (!colorStr) return fallback;
+    const trimmed = colorStr.trim();
+    
+    // 匹配角度，若无则默认 180deg
+    const angleMatch = trimmed.match(/(\d+)deg/);
+    const angle = angleMatch ? parseInt(angleMatch[1]) : 180;
+    
+    // 提取颜色值 (十六进制、rgb、rgba)
+    const hexRegex = /#[a-fA-F0-9]{3,8}/g;
+    const rgbRegex = /rgb\([^)]+\)/g;
+    const rgbaRegex = /rgba\([^)]+\)/g;
+    
+    const hexMatches = trimmed.match(hexRegex) || [];
+    const rgbMatches = trimmed.match(rgbRegex) || [];
+    const rgbaMatches = trimmed.match(rgbaRegex) || [];
+    const allMatches = [...hexMatches, ...rgbMatches, ...rgbaMatches];
+    
+    if (allMatches.length >= 2) {
+        return {
+            angle,
+            from: allMatches[0],
+            to: allMatches[allMatches.length - 1]
+        };
+    }
+    return fallback;
+};
+
+/**
+ * 序列化渐变色为 CSS String
+ */
+export const serializeGradient = (angle: number, from: string, to: string): string => {
+    return `linear-gradient(${angle}deg, ${from} 0%, ${to} 100%)`;
+};
+
