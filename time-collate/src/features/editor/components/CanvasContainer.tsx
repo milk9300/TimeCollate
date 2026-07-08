@@ -17,7 +17,7 @@ export const CanvasContainer: React.FC<CanvasContainerProps> = ({
     <div
       className="relative w-[794px] h-[1123px] rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] border border-amber-500/30 overflow-hidden backdrop-blur-xl transition-all duration-500 hover:shadow-[0_30px_70px_-10px_rgba(217,119,6,0.15)] select-none"
       style={{
-        backgroundColor,
+        background: backgroundColor,
       }}
     >
       {/* 雅致金高光背景与流态玻璃光晕 */}

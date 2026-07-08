@@ -221,7 +221,7 @@ export const FreeCanvasPage: React.FC<FreeCanvasPageProps> = ({ chapter, page, s
 
     // 背景样式
     const bgStyle: React.CSSProperties = {
-        backgroundColor: background?.color || '#FFFFFF',
+        background: background?.color || '#FFFFFF',
         backgroundImage: background?.backgroundImage ? `url(${background.backgroundImage})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center',

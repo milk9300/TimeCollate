@@ -448,7 +448,7 @@ export const BookRenderer: React.FC<BookRendererProps> = ({
             overflow: 'hidden',
             background: customBgImage 
                 ? `url(${customBgImage}) center/cover no-repeat` 
-                : (atmosphereStyle?.bg || 'var(--theme-bg-gradient, var(--theme-bg, #FFFFFF))'),
+                : (page.background?.color || atmosphereStyle?.bg || 'var(--theme-bg-gradient, var(--theme-bg, #FFFFFF))'),
             color: atmosphereStyle?.primaryColor || 'var(--theme-text)',
             '--theme-font': fontValue,
             '--theme-primary': atmosphereStyle?.primaryColor || 'var(--theme-primary, #1A1A1A)',
