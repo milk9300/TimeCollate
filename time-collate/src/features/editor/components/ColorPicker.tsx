@@ -1,6 +1,6 @@
 // #region Description
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { parseColor, hsvToRgb, rgbToHex, rgbToHsv, type ColorState } from '../../../utils/colorUtils';
+import { parseColor, hsvToRgb, rgbToHex, rgbToHsv, type ColorState, isGradientColor, parseGradient, serializeGradient } from '../../../utils/colorUtils';
 import { Pipette } from 'lucide-react';
 
 /**
@@ -30,8 +30,21 @@ const PRESET_COLORS = [
     '#334155'  // 深色蓝
 ];
 
+/**
+ * 精选线性渐变色预设
+ */
+const PRESET_GRADIENTS = [
+    { name: '雅致紫', value: 'linear-gradient(135deg, #667EEA 0%, #764BA2 100%)' },
+    { name: '暖阳橘', value: 'linear-gradient(135deg, #FF7E5F 0%, #FEB47B 100%)' },
+    { name: '薄荷绿', value: 'linear-gradient(135deg, #84FAB0 0%, #8FD3F4 100%)' },
+    { name: '海洋蓝', value: 'linear-gradient(135deg, #21D4FD 0%, #B721FF 100%)' },
+    { name: '樱花粉', value: 'linear-gradient(135deg, #FF9A9E 0%, #FECFEF 100%)' },
+    { name: '日落红', value: 'linear-gradient(135deg, #FAD961 0%, #F76B1C 100%)' }
+];
+
 const LOCAL_STORAGE_KEY = 'timecollate_recent_colors';
 const MAX_RECENT_COUNT = 16;
+
 
 // #region ColorPickerPanel 核心面板Props接口
 interface ColorPickerPanelProps {
@@ -53,10 +66,25 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
     onInteractiveStart,
     onInteractiveEnd
 }) => {
-    // 解析外部颜色作为基础状态
-    const colorState = parseColor(color);
+    const isGrad = isGradientColor(color);
+    const [activeTab, setActiveTab] = useState<'solid' | 'gradient'>(isGrad ? 'gradient' : 'solid');
 
-    // 内部独立维护 HSV 状态，避免拖拽过程中的多对一映射丢失色相
+    // 渐变临时状态
+    const parsedGrad = parseGradient(isGrad ? color : '');
+    const [gradAngle, setGradAngle] = useState(parsedGrad.angle);
+    const [gradFrom, setGradFrom] = useState(parsedGrad.from);
+    const [gradTo, setGradTo] = useState(parsedGrad.to);
+    const [activeGradStop, setActiveGradStop] = useState<'from' | 'to'>('from');
+
+    // 获取当前活跃的操作颜色
+    const getActiveColor = useCallback(() => {
+        if (activeTab === 'solid') return color;
+        return activeGradStop === 'from' ? gradFrom : gradTo;
+    }, [activeTab, color, activeGradStop, gradFrom, gradTo]);
+
+    const colorState = parseColor(getActiveColor());
+
+    // 内部独立维护 HSV 状态
     const [hsv, setHsv] = useState({ h: colorState.h, s: colorState.s, v: colorState.v });
     const [alpha, setAlpha] = useState(colorState.a);
     const [hexInput, setHexInput] = useState(colorState.hex);
@@ -81,7 +109,7 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
 
     // 保存颜色到最近使用列表
     const saveToRecentColors = useCallback((newColor: string) => {
-        const cleaned = newColor.trim().toUpperCase();
+        const cleaned = newColor.trim();
         setRecentColors(prev => {
             const filtered = prev.filter(c => c !== cleaned);
             const updated = [cleaned, ...filtered].slice(0, MAX_RECENT_COUNT);
@@ -92,29 +120,100 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
 
     // 监听外部 props 颜色变化同步内部状态
     useEffect(() => {
-        const nextState = parseColor(color);
-        // 只有当解析出的 HEX 与当前不同，才全量同步，防止拖拽中被重新渲染覆盖
-        const currentHex = rgbToHex(
-            hsvToRgb(hsv.h, hsv.s, hsv.v).r,
-            hsvToRgb(hsv.h, hsv.s, hsv.v).g,
-            hsvToRgb(hsv.h, hsv.s, hsv.v).b,
-            showAlpha ? alpha : 1
-        );
+        const isGradProp = isGradientColor(color);
+        if (isGradProp) {
+            setActiveTab('gradient');
+            const parsed = parseGradient(color);
+            setGradAngle(parsed.angle);
+            setGradFrom(parsed.from);
+            setGradTo(parsed.to);
 
-        if (nextState.hex !== currentHex) {
-            setHsv({ h: nextState.h, s: nextState.s, v: nextState.v });
-            setAlpha(nextState.a);
-            setHexInput(nextState.hex);
+            const activeColor = activeGradStop === 'from' ? parsed.from : parsed.to;
+            const nextState = parseColor(activeColor);
+            const currentHex = rgbToHex(
+                hsvToRgb(hsv.h, hsv.s, hsv.v).r,
+                hsvToRgb(hsv.h, hsv.s, hsv.v).g,
+                hsvToRgb(hsv.h, hsv.s, hsv.v).b,
+                showAlpha ? alpha : 1
+            );
+            if (nextState.hex !== currentHex) {
+                setHsv({ h: nextState.h, s: nextState.s, v: nextState.v });
+                setAlpha(nextState.a);
+                setHexInput(nextState.hex);
+            }
+        } else {
+            setActiveTab('solid');
+            const nextState = parseColor(color);
+            const currentHex = rgbToHex(
+                hsvToRgb(hsv.h, hsv.s, hsv.v).r,
+                hsvToRgb(hsv.h, hsv.s, hsv.v).g,
+                hsvToRgb(hsv.h, hsv.s, hsv.v).b,
+                showAlpha ? alpha : 1
+            );
+            if (nextState.hex !== currentHex) {
+                setHsv({ h: nextState.h, s: nextState.s, v: nextState.v });
+                setAlpha(nextState.a);
+                setHexInput(nextState.hex);
+            }
+            setGradFrom(color);
         }
-    }, [color, showAlpha]);
+    }, [color, showAlpha, activeGradStop]);
+
+    // 切换控制点时更新 HSV 状态
+    useEffect(() => {
+        if (activeTab === 'gradient') {
+            const activeColor = activeGradStop === 'from' ? gradFrom : gradTo;
+            const parsed = parseColor(activeColor);
+            setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
+            setAlpha(parsed.a);
+            setHexInput(parsed.hex);
+        }
+    }, [activeGradStop, activeTab, gradFrom, gradTo]);
 
     // 统一向上派发颜色变化事件
     const handleColorChange = useCallback((newH: number, newS: number, newV: number, newA: number) => {
         const rgb = hsvToRgb(newH, newS, newV);
         const hex = rgbToHex(rgb.r, rgb.g, rgb.b, showAlpha ? newA : 1);
         setHexInput(hex);
-        onChange(hex);
-    }, [onChange, showAlpha]);
+
+        if (activeTab === 'gradient') {
+            if (activeGradStop === 'from') {
+                setGradFrom(hex);
+                onChange(serializeGradient(gradAngle, hex, gradTo));
+            } else {
+                setGradTo(hex);
+                onChange(serializeGradient(gradAngle, gradFrom, hex));
+            }
+        } else {
+            onChange(hex);
+        }
+    }, [onChange, showAlpha, activeTab, activeGradStop, gradAngle, gradFrom, gradTo]);
+
+    // 一键应用颜色或渐变色
+    const applyColor = useCallback((c: string) => {
+        if (isGradientColor(c)) {
+            setActiveTab('gradient');
+            const parsed = parseGradient(c);
+            setGradAngle(parsed.angle);
+            setGradFrom(parsed.from);
+            setGradTo(parsed.to);
+            setActiveGradStop('from');
+            const parsedColor = parseColor(parsed.from);
+            setHsv({ h: parsedColor.h, s: parsedColor.s, v: parsedColor.v });
+            setAlpha(parsedColor.a);
+            setHexInput(parsedColor.hex);
+            onChange(c);
+            saveToRecentColors(c);
+        } else {
+            setActiveTab('solid');
+            const parsed = parseColor(c);
+            setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
+            setAlpha(parsed.a);
+            setHexInput(parsed.hex);
+            onChange(c);
+            saveToRecentColors(c);
+        }
+    }, [onChange, saveToRecentColors]);
 
     // HSV Pad 鼠标/触摸拖拽交互
     const handleHsvPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -148,10 +247,16 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
             }
             window.removeEventListener('pointermove', handlePointerMove);
             window.removeEventListener('pointerup', handlePointerUp);
-            
+
             const finalRgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
             const finalHex = rgbToHex(finalRgb.r, finalRgb.g, finalRgb.b, showAlpha ? alpha : 1);
-            saveToRecentColors(finalHex);
+
+            if (activeTab === 'gradient') {
+                const finalGrad = serializeGradient(gradAngle, activeGradStop === 'from' ? finalHex : gradFrom, activeGradStop === 'to' ? finalHex : gradTo);
+                saveToRecentColors(finalGrad);
+            } else {
+                saveToRecentColors(finalHex);
+            }
             if (onInteractiveEnd) onInteractiveEnd();
         };
 
@@ -189,10 +294,15 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
             }
             window.removeEventListener('pointermove', handlePointerMove);
             window.removeEventListener('pointerup', handlePointerUp);
-            
+
             const finalRgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
             const finalHex = rgbToHex(finalRgb.r, finalRgb.g, finalRgb.b, showAlpha ? alpha : 1);
-            saveToRecentColors(finalHex);
+            if (activeTab === 'gradient') {
+                const finalGrad = serializeGradient(gradAngle, activeGradStop === 'from' ? finalHex : gradFrom, activeGradStop === 'to' ? finalHex : gradTo);
+                saveToRecentColors(finalGrad);
+            } else {
+                saveToRecentColors(finalHex);
+            }
             if (onInteractiveEnd) onInteractiveEnd();
         };
 
@@ -230,10 +340,15 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
             }
             window.removeEventListener('pointermove', handlePointerMove);
             window.removeEventListener('pointerup', handlePointerUp);
-            
+
             const finalRgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
             const finalHex = rgbToHex(finalRgb.r, finalRgb.g, finalRgb.b, showAlpha ? alpha : 1);
-            saveToRecentColors(finalHex);
+            if (activeTab === 'gradient') {
+                const finalGrad = serializeGradient(gradAngle, activeGradStop === 'from' ? finalHex : gradFrom, activeGradStop === 'to' ? finalHex : gradTo);
+                saveToRecentColors(finalGrad);
+            } else {
+                saveToRecentColors(finalHex);
+            }
             if (onInteractiveEnd) onInteractiveEnd();
         };
 
@@ -246,14 +361,23 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
         const val = e.target.value;
         setHexInput(val);
 
-        // 如果刚好拼出了合法的 HEX 格式，静默更新内部颜色，使得画布更新，体验更流畅
         const cleaned = val.trim().replace(/^#/, '');
         if (cleaned.length === 6 || cleaned.length === 8 || cleaned.length === 3 || cleaned.length === 4) {
             const parsed = parseColor(val.startsWith('#') ? val : `#${val}`);
             if (parsed.hex !== '#FFFFFF' || cleaned.toLowerCase() === 'ffffff' || cleaned.toLowerCase() === 'fff') {
                 setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
                 setAlpha(parsed.a);
-                onChange(parsed.hex);
+                if (activeTab === 'gradient') {
+                    if (activeGradStop === 'from') {
+                        setGradFrom(parsed.hex);
+                        onChange(serializeGradient(gradAngle, parsed.hex, gradTo));
+                    } else {
+                        setGradTo(parsed.hex);
+                        onChange(serializeGradient(gradAngle, gradFrom, parsed.hex));
+                    }
+                } else {
+                    onChange(parsed.hex);
+                }
             }
         }
     };
@@ -264,8 +388,23 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
         setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
         setAlpha(parsed.a);
         setHexInput(parsed.hex);
-        onChange(parsed.hex);
-        saveToRecentColors(parsed.hex);
+
+        if (activeTab === 'gradient') {
+            if (activeGradStop === 'from') {
+                setGradFrom(parsed.hex);
+                const finalGrad = serializeGradient(gradAngle, parsed.hex, gradTo);
+                onChange(finalGrad);
+                saveToRecentColors(finalGrad);
+            } else {
+                setGradTo(parsed.hex);
+                const finalGrad = serializeGradient(gradAngle, gradFrom, parsed.hex);
+                onChange(finalGrad);
+                saveToRecentColors(finalGrad);
+            }
+        } else {
+            onChange(parsed.hex);
+            saveToRecentColors(parsed.hex);
+        }
         if (onInteractiveEnd) onInteractiveEnd();
     };
 
@@ -285,8 +424,23 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
                 setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
                 setAlpha(parsed.a);
                 setHexInput(parsed.hex);
-                onChange(parsed.hex);
-                saveToRecentColors(parsed.hex);
+
+                if (activeTab === 'gradient') {
+                    if (activeGradStop === 'from') {
+                        setGradFrom(parsed.hex);
+                        const finalGrad = serializeGradient(gradAngle, parsed.hex, gradTo);
+                        onChange(finalGrad);
+                        saveToRecentColors(finalGrad);
+                    } else {
+                        setGradTo(parsed.hex);
+                        const finalGrad = serializeGradient(gradAngle, gradFrom, parsed.hex);
+                        onChange(finalGrad);
+                        saveToRecentColors(finalGrad);
+                    }
+                } else {
+                    onChange(parsed.hex);
+                    saveToRecentColors(parsed.hex);
+                }
                 if (onInteractiveEnd) onInteractiveEnd();
             } catch (err) {
                 console.log('EyeDropper cancelled or failed', err);
@@ -294,12 +448,90 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
         }
     };
 
-    // 计算当前 Hue 的纯色，供 SV 面板背景渲染
     const hueColor = `hsl(${hsv.h}, 100%, 50%)`;
     const rgbSolid = hsvToRgb(hsv.h, hsv.s, hsv.v);
 
     return (
-        <div className="flex flex-col gap-3.5 w-[216px] text-slate-700 bg-white">
+        <div className="flex flex-col gap-3 w-[216px] text-slate-700 bg-white">
+            {/* 顶层 纯色 / 渐变 Tabs 切换 */}
+            <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                <button
+                    type="button"
+                    onClick={() => {
+                        setActiveTab('solid');
+                        onChange(gradFrom);
+                    }}
+                    className={`flex-1 text-center py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                        activeTab === 'solid' ? 'bg-white shadow-sm text-indigo-650' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                >
+                    纯色
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setActiveTab('gradient');
+                        onChange(serializeGradient(gradAngle, gradFrom, gradTo));
+                    }}
+                    className={`flex-1 text-center py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer ${
+                        activeTab === 'gradient' ? 'bg-white shadow-sm text-indigo-650' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                >
+                    渐变
+                </button>
+            </div>
+
+            {/* 渐变端点与角度专属控制器 */}
+            {activeTab === 'gradient' && (
+                <div className="flex flex-col gap-2 p-2 bg-slate-50 rounded-xl border border-slate-150">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">颜色点</span>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setActiveGradStop('from')}
+                                className={`w-5.5 h-5.5 rounded-full border-2 cursor-pointer transition-transform ${
+                                    activeGradStop === 'from' ? 'border-indigo-500 scale-110 shadow-sm' : 'border-slate-200 hover:scale-105'
+                                }`}
+                                style={{ backgroundColor: gradFrom }}
+                                title="起点颜色"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setActiveGradStop('to')}
+                                className={`w-5.5 h-5.5 rounded-full border-2 cursor-pointer transition-transform ${
+                                    activeGradStop === 'to' ? 'border-indigo-500 scale-110 shadow-sm' : 'border-slate-200 hover:scale-105'
+                                }`}
+                                style={{ backgroundColor: gradTo }}
+                                title="终点颜色"
+                            />
+                        </div>
+                        <span className="ml-auto text-[9px] font-bold text-slate-400 font-mono">
+                            {activeGradStop === 'from' ? '起点' : '终点'}
+                        </span>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5">
+                        <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                            <span>渐变角度</span>
+                            <span className="font-mono">{gradAngle}°</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="360"
+                            value={gradAngle}
+                            onChange={(e) => {
+                                const angle = parseInt(e.target.value);
+                                setGradAngle(angle);
+                                onChange(serializeGradient(angle, gradFrom, gradTo));
+                            }}
+                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-ew-resize accent-indigo-550"
+                        />
+                    </div>
+                </div>
+            )}
+
             {/* 二维 HSV 画板 */}
             <div
                 ref={hsvPadRef}
@@ -408,15 +640,9 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
                             <button
                                 key={`${rc}-${idx}`}
                                 type="button"
-                                onClick={() => {
-                                    const parsed = parseColor(rc);
-                                    setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
-                                    setAlpha(parsed.a);
-                                    setHexInput(parsed.hex);
-                                    onChange(parsed.hex);
-                                }}
+                                onClick={() => applyColor(rc)}
                                 className="w-5 h-5 rounded-full border border-slate-200 cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-sm"
-                                style={{ backgroundColor: rc }}
+                                style={{ background: rc }}
                                 title={rc}
                             />
                         ))}
@@ -424,47 +650,57 @@ export const ColorPickerPanel: React.FC<ColorPickerPanelProps> = ({
                 </div>
             )}
 
-            {/* 推荐配色 */}
+            {/* 推荐配色 / 推荐渐变色 */}
             <div className="space-y-1.5 pt-1.5 border-t border-slate-100">
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">推荐底色</div>
-                <div className="flex gap-1.5">
-                    {PRESET_BACKGROUNDS.map(bg => (
-                        <button
-                            key={bg.color}
-                            type="button"
-                            onClick={() => {
-                                const parsed = parseColor(bg.color);
-                                setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
-                                setAlpha(parsed.a);
-                                setHexInput(parsed.hex);
-                                onChange(parsed.hex);
-                            }}
-                            className="w-5 h-5 rounded-full border border-slate-200 cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-sm"
-                            style={{ backgroundColor: bg.color }}
-                            title={bg.name}
-                        />
-                    ))}
-                </div>
+                {activeTab === 'solid' ? (
+                    <>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">推荐底色</div>
+                        <div className="flex gap-1.5">
+                            {PRESET_BACKGROUNDS.map(bg => (
+                                <button
+                                    key={bg.color}
+                                    type="button"
+                                    onClick={() => applyColor(bg.color)}
+                                    className="w-5 h-5 rounded-full border border-slate-200 cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-sm"
+                                    style={{ backgroundColor: bg.color }}
+                                    title={bg.name}
+                                />
+                            ))}
+                        </div>
 
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2 block">推荐色彩</div>
-                <div className="grid grid-cols-5 gap-1.5">
-                    {PRESET_COLORS.map(pc => (
-                        <button
-                            key={pc}
-                            type="button"
-                            onClick={() => {
-                                const parsed = parseColor(pc);
-                                setHsv({ h: parsed.h, s: parsed.s, v: parsed.v });
-                                setAlpha(parsed.a);
-                                setHexInput(parsed.hex);
-                                onChange(parsed.hex);
-                            }}
-                            className="w-5 h-5 rounded-full border border-slate-200 cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-sm"
-                            style={{ backgroundColor: pc }}
-                            title={pc}
-                        />
-                    ))}
-                </div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2 block">推荐色彩</div>
+                        <div className="grid grid-cols-5 gap-1.5">
+                            {PRESET_COLORS.map(pc => (
+                                <button
+                                    key={pc}
+                                    type="button"
+                                    onClick={() => applyColor(pc)}
+                                    className="w-5 h-5 rounded-full border border-slate-200 cursor-pointer transition-transform hover:scale-110 active:scale-95 shadow-sm"
+                                    style={{ backgroundColor: pc }}
+                                    title={pc}
+                                />
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">推荐渐变色</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {PRESET_GRADIENTS.map(pg => (
+                                <button
+                                    key={pg.value}
+                                    type="button"
+                                    onClick={() => applyColor(pg.value)}
+                                    className="h-6 rounded-lg border border-slate-200 cursor-pointer transition-all hover:scale-103 active:scale-97 shadow-sm text-[9px] text-white font-bold flex items-center justify-center text-shadow-sm px-1 truncate"
+                                    style={{ background: pg.value }}
+                                    title={pg.name}
+                                >
+                                    {pg.name}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -525,7 +761,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                     disabled ? 'opacity-50 cursor-not-allowed' : ''
                 } ${triggerClassName}`}
                 style={children ? undefined : {
-                    backgroundColor: color || '#FFFFFF',
+                    background: color || '#FFFFFF',
                     backgroundImage: !color ? 'url(\'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8"><rect width="4" height="4" fill="%23e2e8f0"/><rect x="4" y="4" width="4" height="4" fill="%23e2e8f0"/></svg>\')' : undefined
                 }}
                 title="选择颜色"
