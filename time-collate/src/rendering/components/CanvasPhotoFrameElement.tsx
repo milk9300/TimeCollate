@@ -100,9 +100,10 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                         yOffset: latest.y
                     }
                 });
+                onDragEnd?.();
             }
         }
-    }, [isSelected, isCropping, onUpdate, element.photo]);
+    }, [isSelected, isCropping, onUpdate, element.photo, onDragEnd]);
 
     const handleClick = (e: React.MouseEvent) => {
         if (readOnly || editorMode === 'hand') return;
@@ -161,6 +162,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                     height: uploaded.height
                 }
             });
+            onDragEnd?.();
         } catch (err) {
             console.error('Canvas photo upload failed:', err);
         } finally {
@@ -218,6 +220,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                         height: uploaded.height
                     }
                 });
+                onDragEnd?.();
             } catch (err) {
                 console.error('Dropped file upload failed:', err);
             } finally {
@@ -275,6 +278,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                     height: cachedMaterial.metadata?.height
                 }
             });
+            onDragEnd?.();
             return;
         }
 
@@ -292,6 +296,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                     caption: '拖入图片'
                 }
             });
+            onDragEnd?.();
         }
     };
 
@@ -385,6 +390,7 @@ export const CanvasPhotoFrameElement: React.FC<CanvasPhotoFrameElementProps> = (
                     yOffset: cropY
                 }
             });
+            onDragEnd?.();
         }
     };
 

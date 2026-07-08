@@ -205,7 +205,9 @@ export function BookCard({ book, onClick, onContextMenu, overlay, topRightAction
                         style={{ backfaceVisibility: 'hidden' }}
                     >
                         {(() => {
-                            const isGeneratedCover = book.coverUrl && (book.coverUrl.includes('/cover.webp') || book.coverUrl.toLowerCase().endsWith('.webp'));
+                            const isGeneratedCover = book.coverUrl && 
+                                !book.coverUrl.startsWith('design://') && 
+                                (book.coverUrl.includes('/cover.webp') || book.coverUrl.toLowerCase().endsWith('.webp'));
                             if (isGeneratedCover) {
                                 const version = book.updatedAt ? new Date(book.updatedAt).getTime() : book.createdAt;
                                 const coverSrc = book.coverThumbnailUrl || book.coverUrl;

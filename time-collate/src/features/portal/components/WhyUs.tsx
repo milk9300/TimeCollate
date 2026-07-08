@@ -243,6 +243,37 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
         }
       `}</style>
 
+      {/* 兜底 CSS 3D/2D 场景：始终渲染作为底座，确保淡入淡出和零延迟响应 */}
+      <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
+        {/* 自由画布 */}
+        <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform ${
+          activeTab === 1 
+            ? 'opacity-100 scale-100 pointer-events-auto' 
+            : 'opacity-0 scale-95 pointer-events-none'
+        }`}>
+          {renderCanvasStage()}
+        </div>
+
+        {/* 仿真3D物理翻页 */}
+        <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform ${
+          activeTab === 2 
+            ? 'opacity-100 scale-100 pointer-events-auto' 
+            : 'opacity-0 scale-95 pointer-events-none'
+        }`}>
+          {renderPageFlipStage()}
+        </div>
+
+        {/* 高定实体印刷 */}
+        <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform ${
+          activeTab === 3 
+            ? 'opacity-100 scale-100 pointer-events-auto' 
+            : 'opacity-0 scale-95 pointer-events-none'
+        }`}>
+          {renderDeliveryStage()}
+        </div>
+      </div>
+
+      {/* 视频层：绝对定位覆盖在上方，加载成功再淡入显示，不干扰底部的 CSS 场景切换 */}
       {currentMediaUrl && !videoError ? (
         <video
           key={activeTab}
@@ -251,44 +282,14 @@ export function ValueShowcasePanel({ activeTab }: ValueShowcasePanelProps) {
           autoPlay
           loop
           playsInline
-          className={`w-full h-full object-cover transition-opacity duration-500 transform scale-100 group-hover:scale-[1.02] ${
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 pointer-events-none ${
             isVideoPlaying ? 'opacity-100' : 'opacity-0'
           }`}
+          onPlaying={() => setIsVideoPlaying(true)}
           onLoadedData={() => setIsVideoPlaying(true)}
           onError={handleVideoError}
         />
       ) : null}
-
-      {(videoError || !currentMediaUrl || !isVideoPlaying) && (
-        <div className="absolute inset-0 w-full h-full relative overflow-hidden">
-          {/* 自由画布 */}
-          <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform ${
-            activeTab === 1 
-              ? 'opacity-100 scale-100 pointer-events-auto' 
-              : 'opacity-0 scale-95 pointer-events-none'
-          }`}>
-            {renderCanvasStage()}
-          </div>
-
-          {/* 仿真3D物理翻页 */}
-          <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform ${
-            activeTab === 2 
-              ? 'opacity-100 scale-100 pointer-events-auto' 
-              : 'opacity-0 scale-95 pointer-events-none'
-          }`}>
-            {renderPageFlipStage()}
-          </div>
-
-          {/* 高定实体印刷 */}
-          <div className={`absolute inset-0 w-full h-full transition-all duration-500 transform ${
-            activeTab === 3 
-              ? 'opacity-100 scale-100 pointer-events-auto' 
-              : 'opacity-0 scale-95 pointer-events-none'
-          }`}>
-            {renderDeliveryStage()}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

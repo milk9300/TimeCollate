@@ -41,11 +41,13 @@ export const BookCoverLayout: React.FC<BookCoverLayoutProps> = ({ book, page, ch
     }
 
     // 检测是否为物理生成的 WebP 整图封面（如 uploads 目录下的图片或 .webp 后缀图），直接渲染整图
-    const isPhysicalCover = book.coverUrl && (
-        book.coverUrl.includes('/cover.webp') || 
-        book.coverUrl.toLowerCase().endsWith('.webp') ||
-        book.coverUrl.includes('uploads/books/')
-    );
+    const isPhysicalCover = book.coverUrl && 
+        !book.coverUrl.startsWith('design://') && 
+        (
+            book.coverUrl.includes('/cover.webp') || 
+            book.coverUrl.toLowerCase().endsWith('.webp') ||
+            book.coverUrl.includes('uploads/books/')
+        );
 
     if (isPhysicalCover) {
         return (

@@ -545,10 +545,24 @@ export class BookService {
                     throw new Error('无权修改此书籍');
                 }
 
+                // 防御性处理：更新时保留数据库中的原始 cover_url / cover_oss_key，
+                // 避免前端传入被 signCoverUrl 签名污染后的 URL 覆盖原始设计协议值。
+                // 封面 URL 的修改应通过独立的 updateThumbnail / saveCover 接口完成。
+                const existingCoverUrl = existingRows[0].cover_url;
+                const existingCoverOssKey = existingRows[0].cover_oss_key;
+
+                // 仅当前端显式传入了新的 design:// 协议时，才允许覆盖封面 URL
+                const finalCoverUrl = (coverUrl && coverUrl.startsWith('design://'))
+                    ? coverUrl
+                    : (existingCoverUrl || coverUrl || null);
+                const finalCoverOssKey = (coverUrl && coverUrl.startsWith('design://'))
+                    ? (book.coverOssKey || null)
+                    : (existingCoverOssKey || book.coverOssKey || null);
+
                 // 更新书籍基本元数据
                 await connection.query(
                     'UPDATE books SET title = ?, author = ?, type = ?, page_size = ?, cover_url = ?, cover_oss_key = ?, is_public = ?, category = ? WHERE id = ?',
-                    [book.title, book.author, book.type || 'book', book.pageSize, coverUrl || null, book.coverOssKey || null, book.isPublic ? 1 : 0, book.category || null, book.id]
+                    [book.title, book.author, book.type || 'book', book.pageSize, finalCoverUrl, finalCoverOssKey, book.isPublic ? 1 : 0, book.category || null, book.id]
                 );
             } else {
                 // 新建书籍

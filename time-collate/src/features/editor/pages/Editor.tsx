@@ -225,6 +225,15 @@ export function Editor() {
         }
     }, [currentBook, queryPageId, chapters, searchParams, setSearchParams, setEditorScope]);
 
+    // 同步 React 本地状态 (activePageId / editorScope) 至 Zustand Store (activeDocumentId)
+    useEffect(() => {
+        if (editorScope === 'cover') {
+            useBookStore.setState({ activeDocumentId: 'cover' });
+        } else if (editorScope === 'chapters' && activePageId) {
+            useBookStore.setState({ activeDocumentId: activePageId });
+        }
+    }, [editorScope, activePageId]);
+
     // Legacy activePhotoEdit hook removed to respect new Canva inspector workflow
 
     // 当视图切换到「书封」时，不主动开启侧边栏，由用户触发（点击右侧 dock 选项卡）

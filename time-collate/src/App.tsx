@@ -5,7 +5,7 @@ import { useAuthStore } from './store/useAuthStore';
 import './App.css';
 
 // 页面组件懒加载
-const Home = lazy(() => import('./features/book/pages/Home').then(m => ({ default: m.Home })));
+const Home = lazy(() => import('./features/portal/pages/Home').then(m => ({ default: m.Home })));
 const Workbench = lazy(() => import('./features/book/pages/Workbench').then(m => ({ default: m.Workbench })));
 const Editor = lazy(() => import('./features/editor/pages/Editor').then(m => ({ default: m.Editor })));
 const Trash = lazy(() => import('./features/book/pages/Trash').then(m => ({ default: m.Trash })));
