@@ -6,6 +6,7 @@ import { useBookStore } from '../../store';
 import { getVirtualDimensions } from '../PhysicalConstants';
 import { CanvaSelectionFrame } from '../../features/editor/components/CanvaSelectionFrame';
 import { useCanvasElementTransform } from '../../features/editor/hooks/useCanvasElementTransform';
+import { isGradientColor, parseGradient } from '../../utils/colorUtils';
 
 interface CanvasStickerElementProps {
     element: StickerElement;
@@ -99,46 +100,106 @@ export const CanvasStickerElement: React.FC<CanvasStickerElementProps> = ({
     };
 
     const renderContent = () => {
-        if (asset) {
-            let contentColor = element.stickerConfig?.colorTint || 'var(--theme-primary)';
-            if (!element.stickerConfig?.colorTint && asset.category === 'stamps') {
-                if (asset.id === 'stamp-wax-seal') {
-                    contentColor = '#a82525';
-                } else if (asset.id === 'stamp-mail') {
-                    contentColor = '#1d4ed8';
-                } else {
-                    contentColor = 'var(--theme-accent, #a82525)';
-                }
+        let contentColor = element.stickerConfig?.colorTint || '';
+        
+        // 兜底自带印章等的主题色/默认色
+        if (!contentColor && asset && asset.category === 'stamps') {
+            if (asset.id === 'stamp-wax-seal') {
+                contentColor = '#a82525';
+            } else if (asset.id === 'stamp-mail') {
+                contentColor = '#1d4ed8';
+            } else {
+                contentColor = 'var(--theme-accent, #a82525)';
+            }
+        } else if (!contentColor && cachedAsset && cachedAsset.metadata?.category === 'stamps') {
+            if (cachedAsset.id === 'stamp-wax-seal') {
+                contentColor = '#a82525';
+            } else if (cachedAsset.id === 'stamp-mail') {
+                contentColor = '#1d4ed8';
+            } else {
+                contentColor = 'var(--theme-accent, #a82525)';
+            }
+        }
+        if (!contentColor) {
+            contentColor = 'var(--theme-primary)';
+        }
+
+        const isGrad = isGradientColor(contentColor);
+        const grad = isGrad ? parseGradient(contentColor) : null;
+
+        const renderSvgWithColor = (svgNode: React.ReactNode) => {
+            if (isGrad && grad) {
+                const gradId = `sticker-grad-${element.id}`;
+                return (
+                    <div className={`gradient-sticker-wrapper-${element.id} w-full h-full relative`}>
+                        <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }} aria-hidden="true">
+                            <defs>
+                                <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stopColor={grad.from} />
+                                    <stop offset="100%" stopColor={grad.to} />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <style dangerouslySetInnerHTML={{ __html: `
+                            .gradient-sticker-wrapper-${element.id} svg path:not([fill="none"]),
+                            .gradient-sticker-wrapper-${element.id} svg circle:not([fill="none"]),
+                            .gradient-sticker-wrapper-${element.id} svg polygon:not([fill="none"]),
+                            .gradient-sticker-wrapper-${element.id} svg rect:not([fill="none"]) {
+                                fill: url(#${gradId}) !important;
+                            }
+                            .gradient-sticker-wrapper-${element.id} svg line,
+                            .gradient-sticker-wrapper-${element.id} svg path[stroke]:not([stroke="none"]),
+                            .gradient-sticker-wrapper-${element.id} svg circle[stroke]:not([stroke="none"]),
+                            .gradient-sticker-wrapper-${element.id} svg polygon[stroke]:not([stroke="none"]),
+                            .gradient-sticker-wrapper-${element.id} svg rect[stroke]:not([stroke="none"]) {
+                                stroke: url(#${gradId}) !important;
+                            }
+                        `}} />
+                        {svgNode}
+                    </div>
+                );
             }
             return (
                 <div style={{ width: '100%', height: '100%', color: contentColor }}>
-                    {asset.render({})}
+                    {svgNode}
                 </div>
             );
+        };
+
+        if (asset) {
+            return renderSvgWithColor(asset.render({ style: { width: '100%', height: '100%' } }));
         }
 
         if (cachedAsset) {
-            let contentColor = element.stickerConfig?.colorTint || 'var(--theme-primary)';
-            if (!element.stickerConfig?.colorTint && cachedAsset.metadata?.category === 'stamps') {
-                if (cachedAsset.id === 'stamp-wax-seal') {
-                    contentColor = '#a82525';
-                } else if (cachedAsset.id === 'stamp-mail') {
-                    contentColor = '#1d4ed8';
-                } else {
-                    contentColor = 'var(--theme-accent, #a82525)';
-                }
-            }
-            
             if (cachedAsset.material_type === 'sticker' && cachedAsset.metadata?.svg) {
-                return (
+                return renderSvgWithColor(
                     <div 
-                        style={{ width: '100%', height: '100%', color: contentColor }}
+                        style={{ width: '100%', height: '100%' }}
                         className="dynamic-svg-sticker"
                         dangerouslySetInnerHTML={{ __html: cachedAsset.metadata.svg }}
                     />
                 );
             } else if (cachedAsset.file_url) {
                 const imageUrl = `${cachedAsset.file_url}${cachedAsset.file_url.includes('?') ? '&' : '?'}cors=1`;
+                if (isGrad) {
+                    return (
+                        <div
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                background: contentColor,
+                                WebkitMaskImage: `url("${imageUrl}")`,
+                                maskImage: `url("${imageUrl}")`,
+                                WebkitMaskSize: 'contain',
+                                maskSize: 'contain',
+                                WebkitMaskRepeat: 'no-repeat',
+                                maskRepeat: 'no-repeat',
+                                WebkitMaskPosition: 'center',
+                                maskPosition: 'center',
+                            }}
+                        />
+                    );
+                }
                 return (
                     <img
                         src={imageUrl}

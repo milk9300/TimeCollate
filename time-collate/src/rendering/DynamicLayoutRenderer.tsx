@@ -100,7 +100,7 @@ export const DynamicLayoutRenderer: React.FC<DynamicLayoutRendererProps> = ({ ch
 
     // 计算背景样式 (支持自定义背景图 or 纯色填充)
     const bgStyle: React.CSSProperties = {
-        backgroundColor: background?.color || 'var(--theme-bg)',
+        background: background?.color || 'var(--theme-bg)',
         backgroundImage: background?.backgroundImage ? `url(${background.backgroundImage})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center',

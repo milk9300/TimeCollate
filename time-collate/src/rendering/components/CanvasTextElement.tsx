@@ -308,7 +308,7 @@ export const CanvasTextElement: React.FC<CanvasTextElementProps> = ({
         fontWeight: textConfig.fontWeight || 'normal',
         fontStyle: textConfig.fontStyle || 'normal',
         color: isEditing ? '#1f2937' : (isGrad ? 'transparent' : (textConfig.color || '#334155')),
-        background: isGrad ? textConfig.color : undefined,
+        backgroundImage: isGrad ? textConfig.color : undefined,
         WebkitBackgroundClip: isGrad ? 'text' : undefined,
         WebkitTextFillColor: isGrad ? 'transparent' : undefined,
         textAlign: textConfig.textAlign || 'left',
